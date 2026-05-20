@@ -26,6 +26,7 @@ import {
   Percent,
   Clock,
 } from "lucide-react";
+import { AccountBar } from "./components/AccountBar";
 
 const fmtMXN = (n) =>
   new Intl.NumberFormat("es-MX", {
@@ -486,12 +487,11 @@ export default function AnalisisDesarrollador() {
               Modelo de inversión, rendimiento y sensibilidad para casa habitación en Querétaro
             </p>
           </div>
-          <button
-            onClick={() => setV(DEFAULTS)}
-            className="text-xs px-3 py-1.5 border border-stone-300 rounded-md text-stone-700 hover:bg-white transition-colors"
-          >
-            Restablecer valores
-          </button>
+          <AccountBar
+            currentData={v}
+            onLoad={(data) => setV({ ...DEFAULTS, ...data })}
+            onReset={() => setV(DEFAULTS)}
+          />
         </header>
 
         {/* Top KPI strip */}
