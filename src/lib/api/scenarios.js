@@ -1,9 +1,10 @@
-import { supabase } from "./supabase";
+import { supabase } from "../supabase";
 
-export async function listScenarios() {
+export async function listScenarios(projectId) {
   const { data, error } = await supabase
     .from("scenarios")
-    .select("id, name, created_at, updated_at")
+    .select("id, name, data, created_at, updated_at, created_by")
+    .eq("project_id", projectId)
     .order("updated_at", { ascending: false });
   if (error) throw error;
   return data;
@@ -12,17 +13,17 @@ export async function listScenarios() {
 export async function getScenario(id) {
   const { data, error } = await supabase
     .from("scenarios")
-    .select("id, name, data")
+    .select("id, project_id, name, data, created_at, updated_at, created_by")
     .eq("id", id)
     .single();
   if (error) throw error;
   return data;
 }
 
-export async function createScenario({ name, data, userId }) {
+export async function createScenario({ projectId, name, data, createdBy }) {
   const { data: row, error } = await supabase
     .from("scenarios")
-    .insert({ name, data, user_id: userId })
+    .insert({ project_id: projectId, name, data, created_by: createdBy })
     .select("id, name, created_at, updated_at")
     .single();
   if (error) throw error;
@@ -30,7 +31,7 @@ export async function createScenario({ name, data, userId }) {
 }
 
 export async function updateScenario(id, { name, data }) {
-  const update = { updated_at: new Date().toISOString() };
+  const update = {};
   if (name !== undefined) update.name = name;
   if (data !== undefined) update.data = data;
   const { data: row, error } = await supabase
@@ -46,4 +47,14 @@ export async function updateScenario(id, { name, data }) {
 export async function deleteScenario(id) {
   const { error } = await supabase.from("scenarios").delete().eq("id", id);
   if (error) throw error;
+}
+
+export async function duplicateScenario(id, newName) {
+  const original = await getScenario(id);
+  return createScenario({
+    projectId: original.project_id,
+    name: newName || `${original.name} (copia)`,
+    data: original.data,
+    createdBy: original.created_by,
+  });
 }
