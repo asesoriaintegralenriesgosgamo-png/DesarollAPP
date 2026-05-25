@@ -199,7 +199,13 @@ create policy profiles_insert_self on public.profiles
 -- projects ---------------------------------------------------------------
 drop policy if exists projects_select_member on public.projects;
 create policy projects_select_member on public.projects
-  for select using (public.is_project_member(id, auth.uid()));
+  for select using (
+    -- El owner siempre puede ver sus proyectos (incluye el caso de INSERT...RETURNING,
+    -- donde la SELECT policy se evalúa antes de que el AFTER trigger inserte al owner
+    -- en project_members).
+    owner_id = auth.uid()
+    or public.is_project_member(id, auth.uid())
+  );
 
 drop policy if exists projects_insert_self on public.projects;
 create policy projects_insert_self on public.projects

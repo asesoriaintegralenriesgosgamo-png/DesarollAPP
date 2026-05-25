@@ -41,32 +41,6 @@ export async function getProject(id) {
 }
 
 export async function createProject({ name, description = null, ownerId }) {
-  // DEBUG temporal — quitar después de validar RLS
-  const { data: { session } } = await supabase.auth.getSession();
-  // Decodifica el payload del JWT (solo para diagnóstico, no se valida firma)
-  let jwtPayload = null;
-  try {
-    const part = session?.access_token?.split(".")[1];
-    if (part) jwtPayload = JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/")));
-  } catch (e) {
-    jwtPayload = { decode_error: String(e) };
-  }
-  // Pregunta al servidor qué ve
-  const { data: serverView, error: dbgErr } = await supabase.rpc("debug_auth");
-  // eslint-disable-next-line no-console
-  console.log("[createProject] CLIENT:", {
-    ownerId,
-    session_user_id: session?.user?.id,
-    jwt_sub: jwtPayload?.sub,
-    jwt_aud: jwtPayload?.aud,
-    jwt_role: jwtPayload?.role,
-    jwt_iss: jwtPayload?.iss,
-    jwt_exp_iso: jwtPayload?.exp ? new Date(jwtPayload.exp * 1000).toISOString() : null,
-    now_iso: new Date().toISOString(),
-  });
-  // eslint-disable-next-line no-console
-  console.log("[createProject] SERVER (debug_auth):", serverView, dbgErr);
-
   const { data, error } = await supabase
     .from("projects")
     .insert({ name, description, owner_id: ownerId })
