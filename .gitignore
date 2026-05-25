@@ -25,3 +25,6 @@ dist-ssr
 
 # Supabase CLI temp
 supabase/.temp/
+
+# Tokens / secretos locales (NUNCA commitear)
+.env.supabase-admin
