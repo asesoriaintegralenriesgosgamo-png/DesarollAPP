@@ -137,7 +137,13 @@ begin
   end loop;
 end $$;
 
--- 4c. Hacer project_id obligatorio y descartar user_id
+-- 4c. Limpiar policies viejas que dependen de user_id antes de poder dropearlo
+drop policy if exists "Usuarios ven sus propios escenarios" on public.scenarios;
+drop policy if exists "Usuarios crean sus propios escenarios" on public.scenarios;
+drop policy if exists "Usuarios editan sus propios escenarios" on public.scenarios;
+drop policy if exists "Usuarios borran sus propios escenarios" on public.scenarios;
+
+-- 4d. Hacer project_id obligatorio y descartar user_id
 alter table public.scenarios
   alter column project_id set not null;
 
