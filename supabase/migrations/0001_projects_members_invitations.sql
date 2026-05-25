@@ -14,6 +14,17 @@
 -- 1. Extensiones --------------------------------------------------------------
 create extension if not exists pgcrypto with schema public;
 
+-- 1b. scenarios (base, si no existe) ------------------------------------------
+-- Idempotente: si ya tenías scenarios desde antes, no toca nada aquí.
+create table if not exists public.scenarios (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null,
+  data       jsonb not null,
+  user_id    uuid references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 -- 2. Tablas nuevas ------------------------------------------------------------
 
 create table if not exists public.profiles (
