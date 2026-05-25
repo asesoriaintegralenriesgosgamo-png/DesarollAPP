@@ -111,30 +111,43 @@ alter table public.scenarios
 
 -- 4b. Backfill: crear un proyecto "Mis escenarios" por cada user_id existente
 -- y migrar los escenarios a ese project_id + insertar como owners en members.
+-- Solo corre si la columna user_id aún existe (idempotente en re-runs).
 do $$
-declare
-  rec record;
-  new_project_id uuid;
 begin
-  for rec in
-    select distinct user_id
-    from public.scenarios
-    where user_id is not null
-      and project_id is null
-  loop
-    insert into public.projects (owner_id, name, description)
-    values (rec.user_id, 'Mis escenarios', 'Proyecto migrado automáticamente')
-    returning id into new_project_id;
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'scenarios'
+      and column_name = 'user_id'
+  ) then
+    execute $migrate$
+      do $inner$
+      declare
+        rec record;
+        new_project_id uuid;
+      begin
+        for rec in
+          select distinct user_id
+          from public.scenarios
+          where user_id is not null
+            and project_id is null
+        loop
+          insert into public.projects (owner_id, name, description)
+          values (rec.user_id, 'Mis escenarios', 'Proyecto migrado automáticamente')
+          returning id into new_project_id;
 
-    insert into public.project_members (project_id, user_id, role)
-    values (new_project_id, rec.user_id, 'owner')
-    on conflict do nothing;
+          insert into public.project_members (project_id, user_id, role)
+          values (new_project_id, rec.user_id, 'owner')
+          on conflict do nothing;
 
-    update public.scenarios
-       set project_id = new_project_id,
-           created_by = user_id
-     where user_id = rec.user_id and project_id is null;
-  end loop;
+          update public.scenarios
+             set project_id = new_project_id,
+                 created_by = user_id
+           where user_id = rec.user_id and project_id is null;
+        end loop;
+      end $inner$;
+    $migrate$;
+  end if;
 end $$;
 
 -- 4c. Limpiar policies viejas que dependen de user_id antes de poder dropearlo
