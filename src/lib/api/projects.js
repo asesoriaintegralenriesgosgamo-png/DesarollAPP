@@ -41,6 +41,20 @@ export async function getProject(id) {
 }
 
 export async function createProject({ name, description = null, ownerId }) {
+  // DEBUG temporal — quitar después de validar RLS
+  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { user } } = await supabase.auth.getUser();
+  // eslint-disable-next-line no-console
+  console.log("[createProject] diagnose", {
+    ownerId,
+    session_user_id: session?.user?.id,
+    getuser_id: user?.id,
+    has_access_token: !!session?.access_token,
+    token_preview: session?.access_token?.slice(0, 20) + "…",
+    aud: session?.user?.aud,
+    role: session?.user?.role,
+  });
+
   const { data, error } = await supabase
     .from("projects")
     .insert({ name, description, owner_id: ownerId })
