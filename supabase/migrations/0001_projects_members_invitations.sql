@@ -397,3 +397,21 @@ end $$;
 
 revoke all on function public.accept_invitation(text) from public;
 grant execute on function public.accept_invitation(text) to authenticated;
+
+-- 8. GRANTs a nivel de rol Postgres -------------------------------------------
+-- RLS solo aplica DESPUÉS de que el rol tiene GRANT. Si las tablas se crearon
+-- via SQL Editor sin default privileges configurados, hay que otorgarlos
+-- explícitamente. Esto es idempotente.
+grant usage on schema public to anon, authenticated;
+
+grant select, insert, update, delete on public.profiles        to authenticated;
+grant select, insert, update, delete on public.projects        to authenticated;
+grant select, insert, update, delete on public.project_members to authenticated;
+grant select, insert, update, delete on public.scenarios       to authenticated;
+grant select, insert, update, delete on public.invitations     to authenticated;
+
+-- anon necesita SELECT en profiles para que avatares/nombres se vean
+-- en pantallas públicas (ej. /invite/:token previewInvitation).
+grant select on public.profiles    to anon;
+grant select on public.invitations to anon;
+grant select on public.projects    to anon;  -- solo nombre/descripción, RLS filtra
