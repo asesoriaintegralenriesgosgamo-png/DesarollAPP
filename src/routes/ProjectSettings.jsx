@@ -152,10 +152,15 @@ export default function ProjectSettings() {
                 className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <Avatar name={m.display_name} url={m.avatar_url} size="md" />
+                  <Avatar
+                    name={m.display_name}
+                    email={m.email}
+                    url={m.avatar_url}
+                    size="md"
+                  />
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-stone-900 truncate">
-                      {m.display_name || m.user_id}
+                      {m.display_name || m.email || "Usuario"}
                       {isOwner && (
                         <span className="text-[10px] text-stone-400 ml-2">(creador)</span>
                       )}

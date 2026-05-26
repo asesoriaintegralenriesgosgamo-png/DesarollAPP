@@ -42,16 +42,21 @@ export function AssigneePicker({
             key={m.user_id}
             className="inline-flex items-center gap-1 pl-0.5 pr-1.5 py-0.5 rounded-full bg-stone-100 border border-stone-200 text-xs text-stone-700"
           >
-            <Avatar name={m.display_name} url={m.avatar_url} size="xs" />
+            <Avatar
+              name={m.display_name}
+              email={m.email}
+              url={m.avatar_url}
+              size="xs"
+            />
             <span className="max-w-[100px] truncate">
-              {m.display_name || m.user_id.slice(0, 6)}
+              {m.display_name || m.email?.split("@")[0] || "Usuario"}
             </span>
             {!disabled && (
               <button
                 type="button"
                 onClick={() => toggle(m.user_id)}
                 className="text-stone-400 hover:text-rose-700"
-                aria-label={`Quitar ${m.display_name}`}
+                aria-label={`Quitar ${m.display_name || m.email || "miembro"}`}
               >
                 <X className="w-3 h-3" />
               </button>
@@ -85,9 +90,14 @@ export function AssigneePicker({
                       onClick={() => toggle(m.user_id)}
                       className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50"
                     >
-                      <Avatar name={m.display_name} url={m.avatar_url} size="sm" />
+                      <Avatar
+                        name={m.display_name}
+                        email={m.email}
+                        url={m.avatar_url}
+                        size="sm"
+                      />
                       <span className="flex-1 truncate text-left">
-                        {m.display_name || m.user_id.slice(0, 6)}
+                        {m.display_name || m.email?.split("@")[0] || "Usuario"}
                       </span>
                       {sel && <Check className="w-4 h-4 text-emerald-600" />}
                     </button>

@@ -39,7 +39,7 @@ export function AuthProvider({ children }) {
     }
     supabase
       .from("profiles")
-      .select("id, display_name, avatar_url")
+      .select("id, display_name, avatar_url, first_name, last_name, birth_date")
       .eq("id", user.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -98,7 +98,7 @@ export function AuthProvider({ children }) {
     if (!user) return;
     const { data } = await supabase
       .from("profiles")
-      .select("id, display_name, avatar_url")
+      .select("id, display_name, avatar_url, first_name, last_name, birth_date")
       .eq("id", user.id)
       .maybeSingle();
     setProfile(data ?? null);

@@ -41,9 +41,12 @@ import { computeKPIs, DEFAULTS } from "../lib/calc";
 import { fmtMXN, fmtPct } from "../lib/format";
 import { InviteModal } from "../components/InviteModal";
 import { ConstructionTab } from "../components/construction/ConstructionTab";
+import { PropertyTab } from "../components/property/PropertyTab";
+import { getPropertyByProject } from "../lib/api/properties";
 
 const TABS = [
   { id: "scenarios", label: "Escenarios" },
+  { id: "property", label: "Predio" },
   { id: "comparison", label: "Comparación" },
   { id: "construction", label: "Calendario de Obra" },
   { id: "members", label: "Miembros" },
@@ -247,6 +250,9 @@ export default function ProjectView() {
           onDuplicate={handleDuplicate}
           onDelete={(s) => setScenarioToDelete(s)}
         />
+      )}
+      {activeTab === "property" && (
+        <PropertyTab projectId={projectId} canEdit={canEdit} />
       )}
       {activeTab === "comparison" && (
         <ComparisonTab scenarios={scenarios} />
@@ -528,12 +534,13 @@ function MembersTab({ members, ownerId, canInvite, onInvite }) {
               <div className="flex items-center gap-3 min-w-0">
                 <Avatar
                   name={m.display_name}
+                  email={m.email}
                   url={m.avatar_url}
                   size="md"
                 />
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-stone-900 truncate">
-                    {m.display_name || m.user_id}
+                    {m.display_name || m.email || "Usuario"}
                     {m.user_id === ownerId && (
                       <span className="text-[10px] text-stone-400 ml-2">(creador)</span>
                     )}
@@ -556,6 +563,29 @@ function CreateScenarioModal({ projectId, userId, onClose, onCreated }) {
   const toast = useToast();
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [prefill, setPrefill] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getPropertyByProject(projectId)
+      .then((prop) => {
+        if (cancelled || !prop) return;
+        const next = {};
+        if (prop.superficie_terreno_m2 != null) {
+          next.terreno_m2 = Number(prop.superficie_terreno_m2);
+        }
+        if (prop.precio_adquisicion != null) {
+          next.terreno_costo = Number(prop.precio_adquisicion);
+        }
+        if (Object.keys(next).length > 0) setPrefill(next);
+      })
+      .catch(() => {
+        // Sin ficha del predio: usar DEFAULTS, no es un error que el usuario deba ver.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -565,7 +595,7 @@ function CreateScenarioModal({ projectId, userId, onClose, onCreated }) {
       const row = await createScenario({
         projectId,
         name: name.trim(),
-        data: DEFAULTS,
+        data: { ...DEFAULTS, ...(prefill ?? {}) },
         createdBy: userId,
       });
       onCreated(row);
@@ -588,6 +618,17 @@ function CreateScenarioModal({ projectId, userId, onClose, onCreated }) {
           onChange={(e) => setName(e.target.value)}
           placeholder="Ej: Optimista, Base, Pesimista…"
         />
+        {prefill && (
+          <p className="text-xs text-stone-500 bg-stone-50 border border-stone-200 rounded-md px-2.5 py-1.5">
+            Se prellenarán desde la ficha del predio:
+            {prefill.terreno_m2 != null && (
+              <> {fmtNumber(prefill.terreno_m2)} m²</>
+            )}
+            {prefill.terreno_m2 != null && prefill.terreno_costo != null && " · "}
+            {prefill.terreno_costo != null && <>{fmtMXN(prefill.terreno_costo)} de costo</>}
+            .
+          </p>
+        )}
         <div className="flex justify-end gap-2 mt-1">
           <Button variant="ghost" onClick={onClose}>
             Cancelar
@@ -599,4 +640,8 @@ function CreateScenarioModal({ projectId, userId, onClose, onCreated }) {
       </form>
     </Modal>
   );
+}
+
+function fmtNumber(n) {
+  return new Intl.NumberFormat("es-MX").format(n);
 }

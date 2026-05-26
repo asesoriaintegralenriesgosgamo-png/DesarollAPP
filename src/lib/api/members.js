@@ -18,6 +18,13 @@ export async function listMembers(projectId) {
     .in("id", userIds);
   if (errProfiles) throw errProfiles;
 
+  // Emails vía RPC security definer (valida pertenencia al proyecto).
+  // Si la RPC no existe aún (migración no aplicada), seguimos sin email.
+  const { data: emailRows } = await supabase.rpc("get_member_emails", {
+    p_project_id: projectId,
+  });
+  const emailById = new Map((emailRows ?? []).map((e) => [e.user_id, e.email]));
+
   const byId = new Map((profiles ?? []).map((p) => [p.id, p]));
   return members.map((m) => ({
     user_id: m.user_id,
@@ -25,6 +32,7 @@ export async function listMembers(projectId) {
     created_at: m.created_at,
     display_name: byId.get(m.user_id)?.display_name ?? null,
     avatar_url: byId.get(m.user_id)?.avatar_url ?? null,
+    email: emailById.get(m.user_id) ?? null,
   }));
 }
 
