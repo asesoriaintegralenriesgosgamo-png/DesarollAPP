@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Plus,
@@ -63,6 +63,28 @@ export default function ProjectView() {
   const [showCreate, setShowCreate] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [scenarioToDelete, setScenarioToDelete] = useState(null);
+  const tabsRef = useRef(null);
+  const [showTabsFade, setShowTabsFade] = useState(false);
+
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const update = () => {
+      setShowTabsFade(el.scrollWidth - el.clientWidth - el.scrollLeft > 8);
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      el.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [loading]);
+
+  useEffect(() => {
+    const active = tabsRef.current?.querySelector('[aria-selected="true"]');
+    active?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [activeTab]);
 
   const refresh = async () => {
     try {
@@ -180,15 +202,19 @@ export default function ProjectView() {
         )}
       </div>
 
-      <div className="border-b border-stone-200 mb-6">
-        <nav className="flex gap-1" role="tablist">
+      <div className="border-b border-stone-200 mb-6 relative">
+        <nav
+          ref={tabsRef}
+          className="flex gap-1 overflow-x-auto no-scrollbar"
+          role="tablist"
+        >
           {TABS.map((t) => (
             <button
               key={t.id}
               role="tab"
               aria-selected={activeTab === t.id}
               onClick={() => setActiveTab(t.id)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors shrink-0 whitespace-nowrap ${
                 activeTab === t.id
                   ? "border-stone-900 text-stone-900"
                   : "border-transparent text-stone-500 hover:text-stone-900"
@@ -204,6 +230,12 @@ export default function ProjectView() {
             </button>
           ))}
         </nav>
+        {showTabsFade && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-stone-100 to-transparent"
+          />
+        )}
       </div>
 
       {activeTab === "scenarios" && (
