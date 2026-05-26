@@ -84,7 +84,8 @@ export function GanttView({
       ...categories,
       { id: SIN_CATEGORIA, name: "Sin categoría", color: "#a8a29e", _virtual: true },
     ];
-    return all.filter((c) => (grouped.get(c.id) || []).length > 0);
+    // Mantener todas las categorías reales (incluso vacías); ocultar "Sin categoría" si está vacío.
+    return all.filter((c) => !c._virtual || (grouped.get(c.id) || []).length > 0);
   }, [categories, grouped]);
 
   // Flatten rows for arrow positioning + render.
@@ -115,15 +116,17 @@ export function GanttView({
 
   const months = useMemo(() => buildMonthAxis(tlStart, tlEnd), [tlStart, tlEnd]);
 
-  if (topLevel.length === 0) {
+  if (topLevel.length === 0 && categories.length === 0) {
     return (
       <div className="border border-dashed border-stone-300 rounded-lg p-10 text-center bg-stone-50/40">
         <p className="text-sm text-stone-500">
-          Sin tareas para mostrar en la línea de tiempo.
+          Sin categorías ni tareas para mostrar.
         </p>
       </div>
     );
   }
+
+  const hasOnlyCategories = topLevel.length === 0 && categories.length > 0;
 
   return (
     <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
@@ -146,6 +149,12 @@ export function GanttView({
           ))}
         </div>
       </div>
+
+      {hasOnlyCategories && (
+        <div className="px-3 py-2 bg-amber-50 border-b border-amber-100 text-[11px] text-amber-900">
+          Aún no hay tareas. Usa <span className="font-semibold">+ Tarea</span> en la barra para crear una en alguna categoría.
+        </div>
+      )}
 
       <div ref={scrollRef} className="overflow-x-auto overflow-y-hidden">
         <div className="flex" style={{ width: `${360 + timelineWidth}px` }}>
