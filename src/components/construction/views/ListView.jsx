@@ -4,9 +4,24 @@ import {
   ChevronRight,
   Plus,
   MoreHorizontal,
-  ArrowUp,
-  ArrowDown,
+  GripVertical,
 } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { AvatarStack } from "../../ui/Avatar";
 import { Progress } from "../../ui/Progress";
 import { ProgressInline } from "../ProgressInline";
@@ -25,7 +40,9 @@ export function ListView({
   onOpenTask,
   onCreateInCategory,
   onProgressChange,
-  onMoveTask,
+  onReorderCategories,
+  onReorderTasksInCategory,
+  onMoveTaskToCategory,
 }) {
   const topLevel = useMemo(() => tasks.filter((t) => !t.parent_id), [tasks]);
   const subtasksByParent = useMemo(() => {
@@ -55,52 +72,155 @@ export function ListView({
     return m;
   }, [members]);
 
-  const orderedCategories = [
-    ...categories,
-    {
-      id: SIN_CATEGORIA,
-      name: "Sin categoría",
-      color: "#a8a29e",
-      position: 9999,
-      _virtual: true,
-    },
-  ];
+  const orderedCategories = useMemo(
+    () => [
+      ...categories,
+      {
+        id: SIN_CATEGORIA,
+        name: "Sin categoría",
+        color: "#a8a29e",
+        position: 9999,
+        _virtual: true,
+      },
+    ],
+    [categories]
+  );
+
+  const realCategoryIds = useMemo(
+    () => categories.map((c) => c.id),
+    [categories]
+  );
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const activeData = active.data.current;
+    const overData = over.data.current;
+
+    if (activeData?.type === "category" && overData?.type === "category") {
+      const oldIdx = realCategoryIds.indexOf(active.id);
+      const newIdx = realCategoryIds.indexOf(over.id);
+      if (oldIdx < 0 || newIdx < 0 || oldIdx === newIdx) return;
+      const next = arrayMove(realCategoryIds, oldIdx, newIdx);
+      onReorderCategories?.(next);
+      return;
+    }
+
+    if (activeData?.type === "task") {
+      const sourceCat = activeData.categoryId;
+      let targetCat;
+      let overIdx;
+      if (overData?.type === "task") {
+        targetCat = overData.categoryId;
+        const arr = grouped.get(targetCat) || [];
+        overIdx = arr.findIndex((t) => t.id === over.id);
+      } else if (overData?.type === "category") {
+        targetCat = over.id;
+        overIdx = (grouped.get(targetCat) || []).length;
+      } else {
+        return;
+      }
+
+      if (sourceCat === targetCat) {
+        const arr = grouped.get(sourceCat) || [];
+        const oldIdx = arr.findIndex((t) => t.id === active.id);
+        if (oldIdx < 0 || overIdx < 0 || oldIdx === overIdx) return;
+        const next = arrayMove(arr, oldIdx, overIdx).map((t) => t.id);
+        onReorderTasksInCategory?.(sourceCat, next);
+      } else {
+        onMoveTaskToCategory?.(active.id, targetCat, overIdx >= 0 ? overIdx : 0);
+      }
+    }
+  };
 
   return (
-    <div className="flex flex-col gap-3">
-      {orderedCategories.map((cat) => {
-        const catTasks = grouped.get(cat.id) || [];
-        if (cat._virtual && catTasks.length === 0) return null;
-        return (
-          <CategorySection
-            key={cat.id}
-            category={cat}
-            tasks={catTasks}
-            subtasksByParent={subtasksByParent}
-            memberById={memberById}
-            canEdit={canEdit}
-            onOpenTask={onOpenTask}
-            onCreate={() => onCreateInCategory?.(cat._virtual ? null : cat.id)}
-            onProgressChange={onProgressChange}
-            onMoveTask={onMoveTask}
-            allTopLevel={catTasks}
-          />
-        );
-      })}
-    </div>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext items={realCategoryIds} strategy={verticalListSortingStrategy}>
+        <div className="flex flex-col gap-3">
+          {orderedCategories.map((cat) => {
+            const catTasks = grouped.get(cat.id) || [];
+            if (cat._virtual && catTasks.length === 0) return null;
+            return (
+              <CategorySection
+                key={cat.id}
+                category={cat}
+                tasks={catTasks}
+                subtasksByParent={subtasksByParent}
+                memberById={memberById}
+                canEdit={canEdit}
+                onOpenTask={onOpenTask}
+                onCreate={() => onCreateInCategory?.(cat._virtual ? null : cat.id)}
+                onProgressChange={onProgressChange}
+              />
+            );
+          })}
+        </div>
+      </SortableContext>
+    </DndContext>
   );
 }
 
 function CategorySection({
-  category, tasks, subtasksByParent, memberById,
-  canEdit, onOpenTask, onCreate, onProgressChange, onMoveTask, allTopLevel,
+  category,
+  tasks,
+  subtasksByParent,
+  memberById,
+  canEdit,
+  onOpenTask,
+  onCreate,
+  onProgressChange,
 }) {
   const [open, setOpen] = useState(true);
   const weighted = computeWeightedProgress(tasks);
+  const isVirtual = !!category._virtual;
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: category.id,
+    data: { type: "category" },
+    disabled: isVirtual,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   return (
-    <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-stone-100 bg-stone-50/50">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`bg-white border border-stone-200 rounded-lg overflow-hidden ${
+        isDragging ? "opacity-60" : ""
+      }`}
+    >
+      <div className="group flex items-center gap-2 px-3 py-2 border-b border-stone-100 bg-stone-50/50">
+        {!isVirtual && canEdit ? (
+          <button
+            {...attributes}
+            {...listeners}
+            className="text-stone-300 hover:text-stone-600 cursor-grab active:cursor-grabbing -ml-1"
+            title="Arrastra para reordenar categoría"
+            aria-label="Reordenar categoría"
+          >
+            <GripVertical className="w-3.5 h-3.5" />
+          </button>
+        ) : (
+          <span className="w-3.5" />
+        )}
         <button
           onClick={() => setOpen((v) => !v)}
           className="text-stone-500 hover:text-stone-900"
@@ -138,21 +258,25 @@ function CategorySection({
             Sin tareas en esta categoría.
           </div>
         ) : (
-          <ul className="divide-y divide-stone-100">
-            {tasks.map((t, idx) => (
-              <TaskRow
-                key={t.id}
-                task={t}
-                subtasks={subtasksByParent.get(t.id) || []}
-                memberById={memberById}
-                canEdit={canEdit}
-                onOpenTask={onOpenTask}
-                onProgressChange={onProgressChange}
-                onMoveUp={idx > 0 ? () => onMoveTask?.(t.id, allTopLevel[idx - 1].id) : null}
-                onMoveDown={idx < tasks.length - 1 ? () => onMoveTask?.(t.id, allTopLevel[idx + 1].id) : null}
-              />
-            ))}
-          </ul>
+          <SortableContext
+            items={tasks.map((t) => t.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ul className="divide-y divide-stone-100">
+              {tasks.map((t) => (
+                <TaskRow
+                  key={t.id}
+                  task={t}
+                  category={category}
+                  subtasks={subtasksByParent.get(t.id) || []}
+                  memberById={memberById}
+                  canEdit={canEdit}
+                  onOpenTask={onOpenTask}
+                  onProgressChange={onProgressChange}
+                />
+              ))}
+            </ul>
+          </SortableContext>
         )
       )}
     </div>
@@ -160,21 +284,57 @@ function CategorySection({
 }
 
 function TaskRow({
-  task, subtasks, memberById, canEdit, onOpenTask, onProgressChange,
-  onMoveUp, onMoveDown,
+  task,
+  category,
+  subtasks,
+  memberById,
+  canEdit,
+  onOpenTask,
+  onProgressChange,
 }) {
   const [showSubs, setShowSubs] = useState(false);
   const status = deriveStatus(task);
   const assignees = (task.assignee_ids || []).map((id) => memberById.get(id)).filter(Boolean);
   const isDelayed = status === "delayed";
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: task.id,
+    data: { type: "task", categoryId: category.id },
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   return (
     <>
       <li
+        ref={setNodeRef}
+        style={style}
         className={`group flex items-center gap-2 px-3 py-2 hover:bg-stone-50 ${
           isDelayed ? "border-l-2 border-rose-400" : ""
-        }`}
+        } ${isDragging ? "opacity-60" : ""}`}
       >
+        {canEdit ? (
+          <button
+            {...attributes}
+            {...listeners}
+            className="text-stone-300 group-hover:text-stone-500 hover:!text-stone-700 cursor-grab active:cursor-grabbing -ml-1"
+            title="Arrastra para reordenar"
+            aria-label="Reordenar tarea"
+          >
+            <GripVertical className="w-3.5 h-3.5" />
+          </button>
+        ) : (
+          <span className="w-3.5" />
+        )}
+
         {subtasks.length > 0 ? (
           <button
             onClick={() => setShowSubs((v) => !v)}
@@ -233,31 +393,13 @@ function TaskRow({
         </div>
 
         {canEdit && (
-          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={onMoveUp}
-              disabled={!onMoveUp}
-              className="text-stone-400 hover:text-stone-700 disabled:opacity-30 p-0.5"
-              aria-label="Subir"
-            >
-              <ArrowUp className="w-3 h-3" />
-            </button>
-            <button
-              onClick={onMoveDown}
-              disabled={!onMoveDown}
-              className="text-stone-400 hover:text-stone-700 disabled:opacity-30 p-0.5"
-              aria-label="Bajar"
-            >
-              <ArrowDown className="w-3 h-3" />
-            </button>
-            <button
-              onClick={() => onOpenTask?.(task.id)}
-              className="text-stone-400 hover:text-stone-700 p-0.5"
-              aria-label="Más"
-            >
-              <MoreHorizontal className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          <button
+            onClick={() => onOpenTask?.(task.id)}
+            className="text-stone-400 hover:text-stone-700 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+            aria-label="Más"
+          >
+            <MoreHorizontal className="w-3.5 h-3.5" />
+          </button>
         )}
       </li>
 
@@ -268,7 +410,7 @@ function TaskRow({
           return (
             <li
               key={s.id}
-              className="flex items-center gap-2 px-3 py-1.5 pl-9 bg-stone-50/40 hover:bg-stone-50"
+              className="flex items-center gap-2 px-3 py-1.5 pl-12 bg-stone-50/40 hover:bg-stone-50"
             >
               <button
                 onClick={() => onOpenTask?.(s.id)}

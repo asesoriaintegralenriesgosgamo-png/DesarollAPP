@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { Loader2 } from "lucide-react";
 import { useToast } from "../ui/Toast";
 import { useAuth } from "../../lib/AuthContext";
-import { listCategories, createCategory } from "../../lib/api/constructionCategories";
+import {
+  listCategories,
+  createCategory,
+  reorderCategories,
+} from "../../lib/api/constructionCategories";
 import { listTasks, updateTask } from "../../lib/api/constructionTasks";
 import { listMilestones } from "../../lib/api/constructionMilestones";
 import { deriveStatus } from "../../lib/construction/status";
@@ -119,25 +123,88 @@ export function ConstructionTab({ projectId, canEdit, members }) {
     }
   };
 
-  const handleMoveTask = async (idA, idB) => {
-    const a = tasks.find((t) => t.id === idA);
-    const b = tasks.find((t) => t.id === idB);
-    if (!a || !b) return;
+  const handleReorderCategories = async (orderedIds) => {
+    const prevCats = categories;
+    const byId = new Map(categories.map((c) => [c.id, c]));
+    const next = orderedIds
+      .map((id, idx) => {
+        const c = byId.get(id);
+        return c ? { ...c, position: idx } : null;
+      })
+      .filter(Boolean);
+    setCategories(next);
+    try {
+      await reorderCategories(orderedIds);
+    } catch (err) {
+      setCategories(prevCats);
+      toast.error(err.message || "No se pudo reordenar categorías");
+    }
+  };
+
+  const handleReorderTasksInCategory = async (categoryId, orderedTaskIds) => {
+    const realCategoryId = categoryId === "__none__" ? null : categoryId;
+    const prevTasks = tasks;
+    const positionByTaskId = new Map(orderedTaskIds.map((id, idx) => [id, idx]));
+    setTasks((prev) =>
+      prev.map((t) =>
+        positionByTaskId.has(t.id) ? { ...t, position: positionByTaskId.get(t.id) } : t
+      )
+    );
+    try {
+      await Promise.all(
+        orderedTaskIds.map((id, idx) =>
+          updateTask(id, { position: idx, category_id: realCategoryId }, user.id)
+        )
+      );
+    } catch (err) {
+      setTasks(prevTasks);
+      toast.error(err.message || "No se pudo reordenar tareas");
+    }
+  };
+
+  const handleMoveTaskToCategory = async (taskId, toCategoryId, insertIndex) => {
+    const realTargetId = toCategoryId === "__none__" ? null : toCategoryId;
+    const moving = tasks.find((t) => t.id === taskId);
+    if (!moving) return;
+    const targetList = tasks
+      .filter((t) => !t.parent_id && (t.category_id || "__none__") === toCategoryId)
+      .filter((t) => t.id !== taskId)
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    const idx = Math.max(0, Math.min(insertIndex, targetList.length));
+    targetList.splice(idx, 0, { ...moving, category_id: realTargetId });
+    const orderedIds = targetList.map((t) => t.id);
+    const prevTasks = tasks;
+    const positionByTaskId = new Map(orderedIds.map((id, i) => [id, i]));
     setTasks((prev) =>
       prev.map((t) => {
-        if (t.id === a.id) return { ...t, position: b.position };
-        if (t.id === b.id) return { ...t, position: a.position };
+        if (t.id === taskId) {
+          return {
+            ...t,
+            category_id: realTargetId,
+            position: positionByTaskId.get(t.id) ?? t.position,
+          };
+        }
+        if (positionByTaskId.has(t.id)) {
+          return { ...t, position: positionByTaskId.get(t.id) };
+        }
         return t;
       })
     );
     try {
-      await Promise.all([
-        updateTask(a.id, { position: b.position }, user.id),
-        updateTask(b.id, { position: a.position }, user.id),
-      ]);
+      await Promise.all(
+        orderedIds.map((id, i) =>
+          updateTask(
+            id,
+            id === taskId
+              ? { position: i, category_id: realTargetId }
+              : { position: i },
+            user.id
+          )
+        )
+      );
     } catch (err) {
-      toast.error(err.message || "No se pudo reordenar");
-      refresh();
+      setTasks(prevTasks);
+      toast.error(err.message || "No se pudo mover la tarea");
     }
   };
 
@@ -228,6 +295,9 @@ export function ConstructionTab({ projectId, canEdit, members }) {
               milestones={milestones}
               members={members}
               onOpenTask={handleOpenTask}
+              onReorderCategories={handleReorderCategories}
+              onReorderTasksInCategory={handleReorderTasksInCategory}
+              onMoveTaskToCategory={handleMoveTaskToCategory}
             />
           )}
           {view === "calendar" && (
@@ -247,7 +317,9 @@ export function ConstructionTab({ projectId, canEdit, members }) {
               onOpenTask={handleOpenTask}
               onCreateInCategory={(catId) => handleNewTask(catId)}
               onProgressChange={handleProgressChange}
-              onMoveTask={handleMoveTask}
+              onReorderCategories={handleReorderCategories}
+              onReorderTasksInCategory={handleReorderTasksInCategory}
+              onMoveTaskToCategory={handleMoveTaskToCategory}
             />
           )}
         </>

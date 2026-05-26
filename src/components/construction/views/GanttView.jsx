@@ -1,8 +1,31 @@
-import { useMemo, useState, useRef, useEffect } from "react";
-import { ChevronDown, ChevronRight, ZoomIn, ZoomOut, Flag } from "lucide-react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  ZoomIn,
+  ZoomOut,
+  Flag,
+  Maximize2,
+  GripVertical,
+} from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { AvatarStack } from "../../ui/Avatar";
 import { Tooltip } from "../../ui/Tooltip";
-import { StatusBadge } from "../StatusBadge";
 import { deriveStatus, STATUS } from "../../../lib/construction/status";
 import {
   parseISODate,
@@ -13,13 +36,33 @@ import {
   fmtDate,
 } from "../../../lib/construction/dateUtils";
 import { computeWeightedProgress } from "../../../lib/construction/kpis";
+import {
+  getNonWorkingDaysInRange,
+  NON_WORKING_TYPE,
+} from "../../../lib/construction/holidays";
 
 const SIN_CATEGORIA = "__none__";
 
-const ZOOM = {
-  month: { dayWidth: 22, label: "Mes" },
-  week:  { dayWidth: 64, label: "Semana" },
-};
+const MIN_DAY_WIDTH = 6;
+const MAX_DAY_WIDTH = 90;
+const DEFAULT_DAY_WIDTH = 22;
+const ZOOM_STEP = 1.25;
+
+const HEADER_H = 44;
+const MILESTONES_H = 28;
+const HEADER_OFFSET = HEADER_H + MILESTONES_H;
+const LEFT_PANE_W = 360;
+
+function clamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function zoomLabel(dayWidth) {
+  if (dayWidth >= 56) return "Día";
+  if (dayWidth >= 28) return "Semana";
+  if (dayWidth >= 14) return "Mes";
+  return "Trimestre";
+}
 
 export function GanttView({
   tasks,
@@ -27,10 +70,14 @@ export function GanttView({
   milestones,
   members,
   onOpenTask,
+  onReorderCategories,
+  onReorderTasksInCategory,
+  onMoveTaskToCategory,
 }) {
-  const [zoom, setZoom] = useState("month");
+  const [dayWidth, setDayWidth] = useState(DEFAULT_DAY_WIDTH);
   const [collapsed, setCollapsed] = useState(() => new Set());
   const scrollRef = useRef(null);
+  const didCenterRef = useRef(false);
 
   const memberById = useMemo(() => {
     const m = new Map();
@@ -49,24 +96,23 @@ export function GanttView({
     return m;
   }, [tasks]);
 
-  // Compute timeline bounds from all task date fields + today + milestones.
   const bounds = useMemo(() => computeBounds(tasks, milestones), [tasks, milestones]);
   const { start: tlStart, end: tlEnd, totalDays } = bounds;
 
-  const dayWidth = ZOOM[zoom].dayWidth;
   const timelineWidth = totalDays * dayWidth;
   const today = stripTime(new Date());
   const todayOffset = diffDays(tlStart, today) * dayWidth;
 
-  // Center on today on first render
+  // Centramos en hoy únicamente en el primer render.
   useEffect(() => {
-    if (scrollRef.current) {
-      const el = scrollRef.current;
-      const target = Math.max(0, todayOffset - el.clientWidth / 2);
-      el.scrollLeft = target;
-    }
+    if (didCenterRef.current) return;
+    if (!scrollRef.current) return;
+    const el = scrollRef.current;
+    const target = Math.max(0, todayOffset - el.clientWidth / 2);
+    el.scrollLeft = target;
+    didCenterRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoom]);
+  }, []);
 
   const grouped = useMemo(() => {
     const byCat = new Map();
@@ -84,11 +130,9 @@ export function GanttView({
       ...categories,
       { id: SIN_CATEGORIA, name: "Sin categoría", color: "#a8a29e", _virtual: true },
     ];
-    // Mantener todas las categorías reales (incluso vacías); ocultar "Sin categoría" si está vacío.
     return all.filter((c) => !c._virtual || (grouped.get(c.id) || []).length > 0);
   }, [categories, grouped]);
 
-  // Flatten rows for arrow positioning + render.
   const flatRows = useMemo(() => {
     const rows = [];
     for (const cat of orderedCategories) {
@@ -105,7 +149,6 @@ export function GanttView({
     return rows;
   }, [orderedCategories, grouped, subtasksByParent, collapsed]);
 
-  // For dependency arrows: map task_id -> row index
   const rowIndexByTaskId = useMemo(() => {
     const m = new Map();
     flatRows.forEach((r, i) => {
@@ -116,17 +159,142 @@ export function GanttView({
 
   const months = useMemo(() => buildMonthAxis(tlStart, tlEnd), [tlStart, tlEnd]);
 
+  // Sombreado de días inhábiles (fines de semana + feriados LFT + costumbre).
+  const nonWorkingBands = useMemo(() => {
+    const map = getNonWorkingDaysInRange(tlStart, tlEnd);
+    const bands = [];
+    for (const [iso, info] of map) {
+      const d = parseISODate(iso);
+      if (!d) continue;
+      bands.push({
+        iso,
+        type: info.type,
+        name: info.name,
+        offset: diffDays(tlStart, d),
+      });
+    }
+    bands.sort((a, b) => a.offset - b.offset);
+    return bands;
+  }, [tlStart, tlEnd]);
+
+  // ---------- Zoom ----------
+  const setZoomAroundClientX = useCallback(
+    (nextDayWidth, clientX) => {
+      const el = scrollRef.current;
+      if (!el) {
+        setDayWidth(nextDayWidth);
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      const cursorX = clientX != null ? clientX - rect.left : el.clientWidth / 2;
+      const anchorDays = (el.scrollLeft + cursorX) / dayWidth;
+      setDayWidth(nextDayWidth);
+      // Después de re-render, ajusta scroll para preservar el día bajo el cursor.
+      requestAnimationFrame(() => {
+        if (!scrollRef.current) return;
+        scrollRef.current.scrollLeft = anchorDays * nextDayWidth - cursorX;
+      });
+    },
+    [dayWidth]
+  );
+
+  const handleZoomIn = () =>
+    setZoomAroundClientX(clamp(dayWidth * ZOOM_STEP, MIN_DAY_WIDTH, MAX_DAY_WIDTH));
+  const handleZoomOut = () =>
+    setZoomAroundClientX(clamp(dayWidth / ZOOM_STEP, MIN_DAY_WIDTH, MAX_DAY_WIDTH));
+  const handleZoomFit = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const avail = Math.max(200, el.clientWidth - 8);
+    const next = clamp(avail / totalDays, MIN_DAY_WIDTH, MAX_DAY_WIDTH);
+    setDayWidth(next);
+  };
+
+  // Ctrl/⌘ + wheel (incluye pinch de trackpad macOS).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      const factor = Math.exp(-e.deltaY * 0.01);
+      const next = clamp(dayWidth * factor, MIN_DAY_WIDTH, MAX_DAY_WIDTH);
+      if (Math.abs(next - dayWidth) < 0.01) return;
+      setZoomAroundClientX(next, e.clientX);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [dayWidth, setZoomAroundClientX]);
+
+  // ---------- DnD ----------
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const realCategoryIds = useMemo(
+    () => orderedCategories.filter((c) => !c._virtual).map((c) => c.id),
+    [orderedCategories]
+  );
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const activeData = active.data.current;
+    const overData = over.data.current;
+
+    if (activeData?.type === "category" && overData?.type === "category") {
+      const oldIdx = realCategoryIds.indexOf(active.id);
+      const newIdx = realCategoryIds.indexOf(over.id);
+      if (oldIdx < 0 || newIdx < 0 || oldIdx === newIdx) return;
+      const next = arrayMove(realCategoryIds, oldIdx, newIdx);
+      onReorderCategories?.(next);
+      return;
+    }
+
+    if (activeData?.type === "task") {
+      const sourceCat = activeData.categoryId;
+      let targetCat;
+      let overIdx;
+      if (overData?.type === "task") {
+        targetCat = overData.categoryId;
+        const arr = grouped.get(targetCat) || [];
+        overIdx = arr.findIndex((t) => t.id === over.id);
+      } else if (overData?.type === "category") {
+        targetCat = over.id;
+        overIdx = (grouped.get(targetCat) || []).length;
+      } else {
+        return;
+      }
+
+      if (sourceCat === targetCat) {
+        const arr = grouped.get(sourceCat) || [];
+        const oldIdx = arr.findIndex((t) => t.id === active.id);
+        if (oldIdx < 0 || overIdx < 0 || oldIdx === overIdx) return;
+        const next = arrayMove(arr, oldIdx, overIdx).map((t) => t.id);
+        onReorderTasksInCategory?.(sourceCat, next);
+      } else {
+        onMoveTaskToCategory?.(active.id, targetCat, overIdx >= 0 ? overIdx : 0);
+      }
+    }
+  };
+
   if (topLevel.length === 0 && categories.length === 0) {
     return (
       <div className="border border-dashed border-stone-300 rounded-lg p-10 text-center bg-stone-50/40">
-        <p className="text-sm text-stone-500">
-          Sin categorías ni tareas para mostrar.
-        </p>
+        <p className="text-sm text-stone-500">Sin categorías ni tareas para mostrar.</p>
       </div>
     );
   }
 
   const hasOnlyCategories = topLevel.length === 0 && categories.length > 0;
+
+  // Estilos de grilla CSS: línea de día punteada + línea de semana sólida.
+  // Alineamos las semanas al lunes más cercano antes de tlStart.
+  const tlStartDow = (tlStart.getDay() + 6) % 7; // 0=lunes
+  const weekOffsetPx = -tlStartDow * dayWidth;
+  const dayGradient = `repeating-linear-gradient(to right, rgba(120,113,108,0.10) 0 1px, transparent 1px ${dayWidth}px)`;
+  const weekGradient = `repeating-linear-gradient(to right, rgba(120,113,108,0.30) 0 1px, transparent 1px ${dayWidth * 7}px)`;
 
   return (
     <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
@@ -134,19 +302,40 @@ export function GanttView({
         <div className="text-[10px] uppercase tracking-wider text-stone-500">
           {fmtDate(tlStart, { withYear: true })} – {fmtDate(tlEnd, { withYear: true })}
         </div>
-        <div className="inline-flex border border-stone-200 rounded-md p-0.5">
-          {Object.entries(ZOOM).map(([id, conf]) => (
+        <div className="flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-2 text-[10px] text-stone-500">
+            <LegendChip type={NON_WORKING_TYPE.WEEKEND} label="Fin de semana" />
+            <LegendChip type={NON_WORKING_TYPE.LFT} label="Feriado LFT" />
+            <LegendChip type={NON_WORKING_TYPE.CUSTOM} label="Costumbre" />
+          </div>
+          <div className="inline-flex items-center border border-stone-200 rounded-md p-0.5">
             <button
-              key={id}
-              onClick={() => setZoom(id)}
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium ${
-                zoom === id ? "bg-stone-900 text-white" : "text-stone-600 hover:text-stone-900"
-              }`}
+              onClick={handleZoomOut}
+              disabled={dayWidth <= MIN_DAY_WIDTH + 0.5}
+              className="inline-flex items-center justify-center w-6 h-6 rounded text-stone-600 hover:text-stone-900 hover:bg-stone-100 disabled:opacity-30"
+              title="Reducir zoom"
             >
-              {id === "week" ? <ZoomIn className="w-3 h-3" /> : <ZoomOut className="w-3 h-3" />}
-              {conf.label}
+              <ZoomOut className="w-3 h-3" />
             </button>
-          ))}
+            <span className="px-2 text-[11px] font-medium text-stone-600 tabular-nums w-20 text-center">
+              {zoomLabel(dayWidth)} · {Math.round(dayWidth)}px
+            </span>
+            <button
+              onClick={handleZoomIn}
+              disabled={dayWidth >= MAX_DAY_WIDTH - 0.5}
+              className="inline-flex items-center justify-center w-6 h-6 rounded text-stone-600 hover:text-stone-900 hover:bg-stone-100 disabled:opacity-30"
+              title="Aumentar zoom"
+            >
+              <ZoomIn className="w-3 h-3" />
+            </button>
+            <button
+              onClick={handleZoomFit}
+              className="inline-flex items-center justify-center w-6 h-6 rounded text-stone-600 hover:text-stone-900 hover:bg-stone-100"
+              title="Ajustar al ancho"
+            >
+              <Maximize2 className="w-3 h-3" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -156,161 +345,390 @@ export function GanttView({
         </div>
       )}
 
-      <div ref={scrollRef} className="overflow-x-auto overflow-y-hidden">
-        <div className="flex" style={{ width: `${360 + timelineWidth}px` }}>
-          {/* Columna fija izquierda */}
-          <div className="w-[360px] shrink-0 sticky left-0 z-10 bg-white border-r border-stone-200">
-            {/* Header alineado con el axis */}
-            <div className="h-[44px] border-b border-stone-200 bg-stone-50 px-3 flex items-center text-[10px] uppercase tracking-wider text-stone-500">
-              Tarea
-            </div>
-            {/* Hitos row (fila para alinear con el axis de hitos en timeline) */}
-            <div className="h-[28px] border-b border-stone-100 bg-stone-50/40 px-3 flex items-center text-[10px] text-stone-500">
-              <Flag className="w-3 h-3 mr-1.5 text-rose-500" /> Hitos
-            </div>
-            {flatRows.map((row, idx) => {
-              if (row.type === "category") {
-                const cat = row.cat;
-                const catTasks = (grouped.get(cat.id) || []);
-                return (
-                  <div
-                    key={`cat-${cat.id}`}
-                    className="flex items-center gap-2 px-3 h-[28px] bg-stone-50 border-b border-stone-100"
-                  >
-                    <span
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{ background: cat.color }}
-                    />
-                    <span className="text-xs font-semibold text-stone-900 truncate">{cat.name}</span>
-                    <span className="ml-auto text-[10px] text-stone-500 tabular-nums">
-                      {computeWeightedProgress(catTasks)}%
-                    </span>
-                  </div>
-                );
-              }
-              const isSubtask = row.type === "subtask";
-              const t = row.task;
-              const cat = row.cat;
-              const assignees = (t.assignee_ids || []).map((id) => memberById.get(id)).filter(Boolean);
-              const subs = subtasksByParent.get(t.id) || [];
-              return (
-                <div
-                  key={`row-${t.id}-${idx}`}
-                  className={`group flex items-center gap-1.5 px-3 h-[36px] border-b border-stone-100 hover:bg-stone-50 ${
-                    isSubtask ? "pl-7" : ""
-                  }`}
-                >
-                  {!isSubtask && subs.length > 0 ? (
-                    <button
-                      onClick={() => toggleSet(collapsed, t.id, setCollapsed)}
-                      className="text-stone-400 hover:text-stone-700"
-                      aria-label="Colapsar"
-                    >
-                      {collapsed.has(t.id)
-                        ? <ChevronRight className="w-3 h-3" />
-                        : <ChevronDown className="w-3 h-3" />}
-                    </button>
-                  ) : (
-                    <span className="w-3" />
-                  )}
-                  <span
-                    className="w-1.5 h-1.5 rounded-full shrink-0"
-                    style={{ background: cat.color }}
-                  />
-                  <button
-                    onClick={() => onOpenTask?.(t.id)}
-                    className="flex-1 min-w-0 text-left text-xs text-stone-900 hover:text-stone-700 truncate"
-                  >
-                    {t.name}
-                  </button>
-                  {assignees.length > 0 && (
-                    <AvatarStack members={assignees} max={2} size="xs" />
-                  )}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={realCategoryIds} strategy={verticalListSortingStrategy}>
+          <div ref={scrollRef} className="overflow-x-auto overflow-y-hidden">
+            <div className="flex" style={{ width: `${LEFT_PANE_W + timelineWidth}px` }}>
+              {/* Columna fija izquierda */}
+              <div className="w-[360px] shrink-0 sticky left-0 z-10 bg-white border-r border-stone-200">
+                <div className="h-[44px] border-b border-stone-200 bg-stone-50 px-3 flex items-center text-[10px] uppercase tracking-wider text-stone-500">
+                  Tarea
                 </div>
-              );
-            })}
-          </div>
-
-          {/* Timeline scrollable */}
-          <div className="relative" style={{ width: `${timelineWidth}px` }}>
-            {/* Header de meses */}
-            <div className="h-[44px] border-b border-stone-200 bg-stone-50 relative">
-              {months.map((m, i) => (
-                <div
-                  key={i}
-                  className="absolute top-0 h-full border-l border-stone-200 px-2 flex items-center text-[10px] uppercase tracking-wider text-stone-500 font-medium"
-                  style={{ left: m.offset * dayWidth, width: m.days * dayWidth }}
-                >
-                  {fmtMonthLabel(m.start)}
+                <div className="h-[28px] border-b border-stone-100 bg-stone-50/40 px-3 flex items-center text-[10px] text-stone-500">
+                  <Flag className="w-3 h-3 mr-1.5 text-rose-500" /> Hitos
                 </div>
-              ))}
-            </div>
+                <LeftPane
+                  orderedCategories={orderedCategories}
+                  grouped={grouped}
+                  subtasksByParent={subtasksByParent}
+                  memberById={memberById}
+                  collapsed={collapsed}
+                  setCollapsed={setCollapsed}
+                  onOpenTask={onOpenTask}
+                />
+              </div>
 
-            {/* Fila de hitos */}
-            <div className="h-[28px] border-b border-stone-100 bg-stone-50/40 relative">
-              {milestones.map((ms) => {
-                const d = parseISODate(ms.date);
-                if (!d) return null;
-                const off = diffDays(tlStart, d) * dayWidth;
-                return (
-                  <Tooltip
-                    key={ms.id}
-                    label={`${ms.name} · ${fmtDate(ms.date)}`}
-                  >
-                    <span
-                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 inline-flex items-center justify-center w-5 h-5 rounded-full bg-white border border-stone-200 shadow-sm"
-                      style={{ left: off, color: ms.color }}
+              {/* Timeline scrollable */}
+              <div className="relative" style={{ width: `${timelineWidth}px` }}>
+                {/* Header de meses */}
+                <div className="h-[44px] border-b border-stone-200 bg-stone-50 relative z-20">
+                  {months.map((m, i) => (
+                    <div
+                      key={i}
+                      className="absolute top-0 h-full border-l border-stone-200 px-2 flex items-center text-[10px] uppercase tracking-wider text-stone-500 font-medium"
+                      style={{ left: m.offset * dayWidth, width: m.days * dayWidth }}
                     >
-                      <Flag className="w-3 h-3" />
-                    </span>
-                  </Tooltip>
-                );
-              })}
-            </div>
+                      {fmtMonthLabel(m.start)}
+                    </div>
+                  ))}
+                </div>
 
-            {/* Filas (tareas) */}
-            {flatRows.map((row, idx) => {
-              if (row.type === "category") {
-                return (
-                  <div
-                    key={`tcat-${row.cat.id}`}
-                    className="h-[28px] bg-stone-50 border-b border-stone-100"
+                {/* Fila de hitos */}
+                <div className="h-[28px] border-b border-stone-100 bg-stone-50/40 relative z-20">
+                  {milestones.map((ms) => {
+                    const d = parseISODate(ms.date);
+                    if (!d) return null;
+                    const off = diffDays(tlStart, d) * dayWidth;
+                    return (
+                      <Tooltip key={ms.id} label={`${ms.name} · ${fmtDate(ms.date)}`}>
+                        <span
+                          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 inline-flex items-center justify-center w-5 h-5 rounded-full bg-white border border-stone-200 shadow-sm"
+                          style={{ left: off, color: ms.color }}
+                        >
+                          <Flag className="w-3 h-3" />
+                        </span>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+
+                {/* Capa de grilla (día + semana) — detrás de las filas */}
+                <div
+                  className="absolute left-0 right-0 pointer-events-none z-0"
+                  style={{
+                    top: HEADER_OFFSET,
+                    bottom: 0,
+                    backgroundImage: `${weekGradient}, ${dayGradient}`,
+                    backgroundPosition: `${weekOffsetPx}px 0, 0 0`,
+                  }}
+                />
+
+                {/* Capa de sombreado de días inhábiles */}
+                <div
+                  className="absolute left-0 right-0 pointer-events-none z-0"
+                  style={{ top: HEADER_OFFSET, bottom: 0 }}
+                >
+                  {nonWorkingBands.map((b) => (
+                    <NonWorkingBand key={b.iso} band={b} dayWidth={dayWidth} />
+                  ))}
+                </div>
+
+                {/* Filas (tareas) */}
+                {orderedCategories.map((cat) => (
+                  <TimelineCategoryBlock
+                    key={`tcat-${cat.id}`}
+                    cat={cat}
+                    tasks={grouped.get(cat.id) || []}
+                    subtasksByParent={subtasksByParent}
+                    collapsed={collapsed}
+                    tlStart={tlStart}
+                    dayWidth={dayWidth}
+                    onOpenTask={onOpenTask}
                   />
-                );
-              }
-              return (
-                <GanttRow
-                  key={`tr-${row.task.id}-${idx}`}
-                  task={row.task}
-                  cat={row.cat}
-                  isSubtask={row.type === "subtask"}
+                ))}
+
+                {/* Línea de hoy */}
+                <div
+                  className="absolute top-0 bottom-0 w-px bg-stone-900/80 pointer-events-none z-30"
+                  style={{ left: todayOffset }}
+                >
+                  <span className="absolute -top-0 -left-1 w-2 h-2 rounded-full bg-stone-900" />
+                </div>
+
+                {/* Flechas de dependencias */}
+                <DependencyArrows
+                  tasks={tasks}
                   tlStart={tlStart}
                   dayWidth={dayWidth}
-                  onClick={() => onOpenTask?.(row.task.id)}
+                  rowIndexByTaskId={rowIndexByTaskId}
+                  headerOffset={HEADER_OFFSET}
                 />
-              );
-            })}
-
-            {/* Línea de hoy */}
-            <div
-              className="absolute top-0 bottom-0 w-px bg-stone-900/80 pointer-events-none z-20"
-              style={{ left: todayOffset }}
-            >
-              <span className="absolute -top-0 -left-1 w-2 h-2 rounded-full bg-stone-900" />
+              </div>
             </div>
-
-            {/* Flechas de dependencias */}
-            <DependencyArrows
-              tasks={tasks}
-              tlStart={tlStart}
-              dayWidth={dayWidth}
-              rowIndexByTaskId={rowIndexByTaskId}
-              headerOffset={44 + 28}
-            />
           </div>
-        </div>
-      </div>
+        </SortableContext>
+      </DndContext>
     </div>
+  );
+}
+
+function LeftPane({
+  orderedCategories,
+  grouped,
+  subtasksByParent,
+  memberById,
+  collapsed,
+  setCollapsed,
+  onOpenTask,
+}) {
+  return (
+    <>
+      {orderedCategories.map((cat) => {
+        const catTasks = grouped.get(cat.id) || [];
+        return (
+          <SortableCategoryRow
+            key={`cat-${cat.id}`}
+            cat={cat}
+            catTasks={catTasks}
+            subtasksByParent={subtasksByParent}
+            memberById={memberById}
+            collapsed={collapsed}
+            setCollapsed={setCollapsed}
+            onOpenTask={onOpenTask}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function SortableCategoryRow({
+  cat,
+  catTasks,
+  subtasksByParent,
+  memberById,
+  collapsed,
+  setCollapsed,
+  onOpenTask,
+}) {
+  const isVirtual = !!cat._virtual;
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: cat.id,
+    data: { type: "category" },
+    disabled: isVirtual,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <div
+        className={`group flex items-center gap-2 px-3 h-[28px] bg-stone-50 border-b border-stone-100 ${
+          isDragging ? "opacity-50" : ""
+        }`}
+      >
+        {!isVirtual ? (
+          <button
+            {...attributes}
+            {...listeners}
+            className="text-stone-300 hover:text-stone-600 cursor-grab active:cursor-grabbing -ml-1"
+            title="Arrastra para reordenar categoría"
+            aria-label="Reordenar categoría"
+          >
+            <GripVertical className="w-3.5 h-3.5" />
+          </button>
+        ) : (
+          <span className="w-3.5" />
+        )}
+        <span
+          className="w-2 h-2 rounded-full shrink-0"
+          style={{ background: cat.color }}
+        />
+        <span className="text-xs font-semibold text-stone-900 truncate">{cat.name}</span>
+        <span className="ml-auto text-[10px] text-stone-500 tabular-nums">
+          {computeWeightedProgress(catTasks)}%
+        </span>
+      </div>
+
+      <SortableContext
+        items={catTasks.map((t) => t.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        {catTasks.map((t) => {
+          const subs = subtasksByParent.get(t.id) || [];
+          return (
+            <SortableTaskRow
+              key={`row-${t.id}`}
+              task={t}
+              cat={cat}
+              assignees={(t.assignee_ids || [])
+                .map((id) => memberById.get(id))
+                .filter(Boolean)}
+              subs={subs}
+              collapsed={collapsed}
+              setCollapsed={setCollapsed}
+              onOpenTask={onOpenTask}
+              renderSubtasks={!collapsed.has(t.id) ? subs : []}
+              memberById={memberById}
+            />
+          );
+        })}
+      </SortableContext>
+    </div>
+  );
+}
+
+function SortableTaskRow({
+  task,
+  cat,
+  assignees,
+  subs,
+  collapsed,
+  setCollapsed,
+  onOpenTask,
+  renderSubtasks,
+  memberById,
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: task.id,
+    data: { type: "task", categoryId: cat.id },
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <div
+        className={`group flex items-center gap-1.5 px-3 h-[36px] border-b border-stone-100 hover:bg-stone-50 ${
+          isDragging ? "opacity-50" : ""
+        }`}
+      >
+        <button
+          {...attributes}
+          {...listeners}
+          className="text-stone-300 group-hover:text-stone-500 hover:!text-stone-700 cursor-grab active:cursor-grabbing -ml-1"
+          title="Arrastra para reordenar"
+          aria-label="Reordenar tarea"
+        >
+          <GripVertical className="w-3.5 h-3.5" />
+        </button>
+        {subs.length > 0 ? (
+          <button
+            onClick={() => toggleSet(collapsed, task.id, setCollapsed)}
+            className="text-stone-400 hover:text-stone-700"
+            aria-label="Colapsar"
+          >
+            {collapsed.has(task.id) ? (
+              <ChevronRight className="w-3 h-3" />
+            ) : (
+              <ChevronDown className="w-3 h-3" />
+            )}
+          </button>
+        ) : (
+          <span className="w-3" />
+        )}
+        <span
+          className="w-1.5 h-1.5 rounded-full shrink-0"
+          style={{ background: cat.color }}
+        />
+        <button
+          onClick={() => onOpenTask?.(task.id)}
+          className="flex-1 min-w-0 text-left text-xs text-stone-900 hover:text-stone-700 truncate"
+        >
+          {task.name}
+        </button>
+        {assignees.length > 0 && (
+          <AvatarStack members={assignees} max={2} size="xs" />
+        )}
+      </div>
+
+      {renderSubtasks.map((s) => {
+        const subAssignees = (s.assignee_ids || [])
+          .map((id) => memberById.get(id))
+          .filter(Boolean);
+        return (
+          <div
+            key={`row-${s.id}`}
+            className="flex items-center gap-1.5 px-3 h-[36px] border-b border-stone-100 hover:bg-stone-50 pl-10"
+          >
+            <span
+              className="w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ background: cat.color }}
+            />
+            <button
+              onClick={() => onOpenTask?.(s.id)}
+              className="flex-1 min-w-0 text-left text-xs text-stone-700 hover:text-stone-900 truncate"
+            >
+              {s.name}
+            </button>
+            {subAssignees.length > 0 && (
+              <AvatarStack members={subAssignees} max={2} size="xs" />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TimelineCategoryBlock({
+  cat,
+  tasks,
+  subtasksByParent,
+  collapsed,
+  tlStart,
+  dayWidth,
+  onOpenTask,
+}) {
+  return (
+    <>
+      <div className="h-[28px] border-b border-stone-100 relative z-10" />
+      {tasks.map((t) => (
+        <TimelineTaskRows
+          key={t.id}
+          task={t}
+          cat={cat}
+          subtasks={collapsed.has(t.id) ? [] : subtasksByParent.get(t.id) || []}
+          tlStart={tlStart}
+          dayWidth={dayWidth}
+          onOpenTask={onOpenTask}
+        />
+      ))}
+    </>
+  );
+}
+
+function TimelineTaskRows({ task, cat, subtasks, tlStart, dayWidth, onOpenTask }) {
+  return (
+    <>
+      <GanttRow
+        task={task}
+        cat={cat}
+        isSubtask={false}
+        tlStart={tlStart}
+        dayWidth={dayWidth}
+        onClick={() => onOpenTask?.(task.id)}
+      />
+      {subtasks.map((s) => (
+        <GanttRow
+          key={s.id}
+          task={s}
+          cat={cat}
+          isSubtask={true}
+          tlStart={tlStart}
+          dayWidth={dayWidth}
+          onClick={() => onOpenTask?.(s.id)}
+        />
+      ))}
+    </>
   );
 }
 
@@ -325,7 +743,6 @@ function GanttRow({ task, cat, isSubtask, tlStart, dayWidth, onClick }) {
   const plannedDays = ps && pe ? Math.max(1, diffDays(ps, pe) + 1) : 0;
   const plannedWidth = plannedDays * dayWidth;
 
-  // Barra real: si no hay actual_start, se "infiere" desde planned_start con progreso.
   const realStart = as || ps;
   const realLeft = realStart ? diffDays(tlStart, realStart) * dayWidth : null;
   const realFullDays = ae && realStart
@@ -344,19 +761,21 @@ function GanttRow({ task, cat, isSubtask, tlStart, dayWidth, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`relative block w-full h-[36px] border-b border-stone-100 hover:bg-stone-50 text-left ${
-        isDelayedRow ? "bg-rose-50/30" : ""
+      className={`relative block w-full h-[36px] border-b border-stone-100 hover:bg-stone-50/60 text-left z-10 ${
+        isDelayedRow ? "bg-rose-50/40" : ""
       } ${isSubtask ? "pl-3" : ""}`}
     >
       {plannedLeft != null && plannedWidth > 0 && (
         <div
-          className={`absolute top-3 h-1.5 rounded-full bg-stone-200 ${ae ? "" : "border border-dashed border-stone-300"}`}
+          className={`absolute top-3 h-1.5 rounded-full bg-stone-200 ${
+            ae ? "" : "border border-dashed border-stone-300"
+          }`}
           style={{ left: plannedLeft, width: plannedWidth }}
         />
       )}
       {realLeft != null && realWidth > 0 && (
         <div
-          className={`absolute top-[18px] h-3 rounded-full ${borderCls}`}
+          className={`absolute top-[18px] h-3 rounded-full shadow-sm ${borderCls}`}
           style={{
             left: realLeft,
             width: realWidth,
@@ -368,6 +787,53 @@ function GanttRow({ task, cat, isSubtask, tlStart, dayWidth, onClick }) {
   );
 }
 
+function NonWorkingBand({ band, dayWidth }) {
+  const left = band.offset * dayWidth;
+  const width = dayWidth;
+  let bg = "rgba(0,0,0,0.04)";
+  let extra = null;
+  if (band.type === NON_WORKING_TYPE.LFT) {
+    bg = "rgba(244,63,94,0.08)";
+    extra = (
+      <span
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-rose-500"
+        style={{ marginTop: 2 }}
+      />
+    );
+  } else if (band.type === NON_WORKING_TYPE.CUSTOM) {
+    bg =
+      "repeating-linear-gradient(45deg, rgba(245,158,11,0.10) 0 3px, rgba(245,158,11,0) 3px 7px), rgba(245,158,11,0.05)";
+  }
+
+  return (
+    <span
+      title={band.name}
+      className="absolute top-0 bottom-0 block"
+      style={{ left, width, background: bg }}
+    >
+      {extra}
+    </span>
+  );
+}
+
+function LegendChip({ type, label }) {
+  let style = { background: "rgba(0,0,0,0.10)" };
+  if (type === NON_WORKING_TYPE.LFT) {
+    style = { background: "rgba(244,63,94,0.30)" };
+  } else if (type === NON_WORKING_TYPE.CUSTOM) {
+    style = {
+      background:
+        "repeating-linear-gradient(45deg, rgba(245,158,11,0.6) 0 3px, rgba(245,158,11,0.15) 3px 7px)",
+    };
+  }
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="inline-block w-3 h-3 rounded-sm border border-stone-200" style={style} />
+      {label}
+    </span>
+  );
+}
+
 function DependencyArrows({ tasks, tlStart, dayWidth, rowIndexByTaskId, headerOffset }) {
   const rowH = 36;
   const catH = 28;
@@ -376,7 +842,7 @@ function DependencyArrows({ tasks, tlStart, dayWidth, rowIndexByTaskId, headerOf
     const deps = t.dependency_ids || [];
     for (const depId of deps) {
       const fromIdx = rowIndexByTaskId.get(depId);
-      const toIdx   = rowIndexByTaskId.get(t.id);
+      const toIdx = rowIndexByTaskId.get(t.id);
       if (fromIdx == null || toIdx == null) continue;
       const fromTask = tasks.find((x) => x.id === depId);
       if (!fromTask) continue;
@@ -394,7 +860,7 @@ function DependencyArrows({ tasks, tlStart, dayWidth, rowIndexByTaskId, headerOf
   const totalH = headerOffset + rowOffset(9999, rowH, catH, 0);
   return (
     <svg
-      className="absolute top-0 left-0 pointer-events-none"
+      className="absolute top-0 left-0 pointer-events-none z-30"
       width="100%"
       height={totalH}
       style={{ overflow: "visible" }}
@@ -430,10 +896,6 @@ function DependencyArrows({ tasks, tlStart, dayWidth, rowIndexByTaskId, headerOf
 }
 
 function rowOffset(idx, rowH, catH, headerOffset) {
-  // Mismo cálculo del DOM: header (axis + milestones) + filas variables.
-  // Pero como flatRows mezcla categorías (catH) y tareas (rowH), aquí asumimos
-  // que el caller siempre da un idx válido. Para evitar drift fino entre la
-  // posición real y el cálculo, usamos rowH constante: ajuste menor visual.
   return headerOffset + idx * rowH;
 }
 
