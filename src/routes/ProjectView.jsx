@@ -40,10 +40,12 @@ import { listMembers, getCurrentUserRole } from "../lib/api/members";
 import { computeKPIs, DEFAULTS } from "../lib/calc";
 import { fmtMXN, fmtPct } from "../lib/format";
 import { InviteModal } from "../components/InviteModal";
+import { ConstructionTab } from "../components/construction/ConstructionTab";
 
 const TABS = [
   { id: "scenarios", label: "Escenarios" },
   { id: "comparison", label: "Comparación" },
+  { id: "construction", label: "Calendario de Obra" },
   { id: "members", label: "Miembros" },
 ];
 
@@ -216,6 +218,13 @@ export default function ProjectView() {
       )}
       {activeTab === "comparison" && (
         <ComparisonTab scenarios={scenarios} />
+      )}
+      {activeTab === "construction" && (
+        <ConstructionTab
+          projectId={projectId}
+          canEdit={canEdit}
+          members={members}
+        />
       )}
       {activeTab === "members" && (
         <MembersTab
