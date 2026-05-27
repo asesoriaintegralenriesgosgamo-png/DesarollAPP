@@ -42,6 +42,7 @@ import { fmtMXN, fmtPct } from "../lib/format";
 import { InviteModal } from "../components/InviteModal";
 import { ConstructionTab } from "../components/construction/ConstructionTab";
 import { PropertyTab } from "../components/property/PropertyTab";
+import { AccountsTab } from "../components/accounts/AccountsTab";
 import { getPropertyByProject } from "../lib/api/properties";
 
 const TABS = [
@@ -49,6 +50,7 @@ const TABS = [
   { id: "property", label: "Predio" },
   { id: "comparison", label: "Comparación" },
   { id: "construction", label: "Calendario de Obra" },
+  { id: "accounts", label: "Cuentas" },
   { id: "members", label: "Miembros" },
 ];
 
@@ -263,6 +265,9 @@ export default function ProjectView() {
           canEdit={canEdit}
           members={members}
         />
+      )}
+      {activeTab === "accounts" && (
+        <AccountsTab projectId={projectId} canEdit={canEdit} members={members} />
       )}
       {activeTab === "members" && (
         <MembersTab
