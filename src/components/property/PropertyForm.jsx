@@ -122,14 +122,22 @@ const NUMERIC_FIELDS = new Set([
   "adeudos_agua",
 ]);
 
+function parseNumeric(raw) {
+  const trimmed = String(raw ?? "").trim();
+  if (trimmed === "") return null;
+  // Aceptar coma decimal (es-MX) y descartar símbolos como ° o espacios extra.
+  const normalized = trimmed.replace(/\s+/g, "").replace(",", ".");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
 function formStateToPayload(state) {
   const payload = {};
   for (const [k, v] of Object.entries(state)) {
     if (typeof EMPTY_FIELDS[k] === "boolean") {
       payload[k] = Boolean(v);
     } else if (NUMERIC_FIELDS.has(k)) {
-      const trimmed = String(v ?? "").trim();
-      payload[k] = trimmed === "" ? null : Number(trimmed);
+      payload[k] = parseNumeric(v);
     } else {
       const trimmed = String(v ?? "").trim();
       payload[k] = trimmed === "" ? null : trimmed;
