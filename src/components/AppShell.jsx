@@ -12,6 +12,10 @@ export function AppShell({ breadcrumbs = [], actions = null, children }) {
               <Building2 className="w-4 h-4" strokeWidth={2} />
               <span className="text-xs font-semibold uppercase tracking-widest">AnalisisDev</span>
             </Link>
+            <div className="h-4 w-px bg-stone-300 mx-1 hidden sm:block" />
+            <Link to="/expenses" className="text-sm font-medium text-stone-600 hover:text-stone-900 hidden sm:block">
+              Gastos
+            </Link>
             {breadcrumbs.length > 0 && (
               <nav aria-label="breadcrumb" className="flex items-center gap-1 min-w-0 text-xs text-stone-500 overflow-hidden">
                 <span className="text-stone-300">/</span>

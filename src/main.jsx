@@ -16,6 +16,7 @@ import ProjectSettings from "./routes/ProjectSettings";
 import ScenarioEditor from "./routes/ScenarioEditor";
 import AcceptInvite from "./routes/AcceptInvite";
 import AccountPage from "./routes/AccountPage";
+import ExpenseManager from "./routes/ExpenseManager";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
@@ -67,6 +68,14 @@ createRoot(document.getElementById("root")).render(
               element={
                 <ProtectedRoute>
                   <AccountPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/expenses"
+              element={
+                <ProtectedRoute>
+                  <ExpenseManager />
                 </ProtectedRoute>
               }
             />
