@@ -14,7 +14,8 @@ import {
   listPersonalExpenses, 
   insertPersonalExpenses, 
   createPersonalCategory, 
-  updatePersonalExpenseCategory 
+  updatePersonalExpenseCategory,
+  updatePersonalExpenseTitle
 } from '../lib/api/personalExpenses';
 
 function UnclassifiedList({ transactions, children }) {
@@ -149,6 +150,21 @@ export default function ExpenseManager() {
     }
   };
 
+  const handleTitleChange = async (expenseId, newTitle) => {
+    // Update local state optimistically
+    setTransactions(prev => prev.map(tx => 
+      tx.id === expenseId ? { ...tx, title: newTitle } : tx
+    ));
+
+    try {
+      await updatePersonalExpenseTitle(expenseId, newTitle);
+    } catch (err) {
+      toast.error('Error al actualizar el título');
+      // On error, we could revert, but for now just reload
+      loadData();
+    }
+  };
+
   const sortedTransactions = useMemo(() => {
     return [...transactions].sort((a, b) => {
       if (sortBy === 'amount') {
@@ -167,7 +183,7 @@ export default function ExpenseManager() {
   return (
     <AppShell breadcrumbs={[{ label: 'Gastos', to: '/expenses' }]}>
       <div className="bg-black text-white p-6 md:p-10 font-sans rounded-xl border border-neutral-800 min-h-screen">
-        <div className="max-w-7xl mx-auto space-y-8">
+        <div className="w-full max-w-[1600px] mx-auto space-y-8">
           
           <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-neutral-800 pb-6">
             <div>
@@ -231,7 +247,7 @@ export default function ExpenseManager() {
                   
                   <UnclassifiedList transactions={unclassified}>
                     {unclassified.map(tx => (
-                      <ExpenseCard key={tx.id} transaction={tx} />
+                      <ExpenseCard key={tx.id} transaction={tx} onTitleChange={handleTitleChange} />
                     ))}
                   </UnclassifiedList>
                 </div>
@@ -282,7 +298,7 @@ export default function ExpenseManager() {
                       return (
                         <CategoryBucket key={cat.id} category={cat} transactions={catTxs}>
                           {catTxs.map(tx => (
-                            <ExpenseCard key={tx.id} transaction={tx} />
+                            <ExpenseCard key={tx.id} transaction={tx} onTitleChange={handleTitleChange} />
                           ))}
                         </CategoryBucket>
                       );
@@ -299,7 +315,7 @@ export default function ExpenseManager() {
               <DragOverlay>
                 {activeId && activeTx ? (
                   <div className="opacity-80 rotate-2 scale-105 transition-transform cursor-grabbing shadow-xl">
-                    <ExpenseCard transaction={activeTx} />
+                    <ExpenseCard transaction={activeTx} onTitleChange={handleTitleChange} />
                   </div>
                 ) : null}
               </DragOverlay>

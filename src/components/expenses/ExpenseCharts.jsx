@@ -86,7 +86,7 @@ export default function ExpenseCharts({ transactions, categories }) {
           {topExpenses.length > 0 ? (
             <div>
               <p className="text-2xl font-bold text-rose-400">{formatCurrency(topExpenses[0].amount)}</p>
-              <p className="text-sm text-neutral-300 truncate mt-1" title={topExpenses[0].concept}>{topExpenses[0].concept}</p>
+              <p className="text-sm text-neutral-300 truncate mt-1" title={topExpenses[0].title || topExpenses[0].concept}>{topExpenses[0].title || topExpenses[0].concept}</p>
             </div>
           ) : <p className="text-neutral-500">N/A</p>}
         </div>
@@ -95,7 +95,7 @@ export default function ExpenseCharts({ transactions, categories }) {
           <div className="space-y-2">
             {topExpenses.slice(0, 3).map(tx => (
               <div key={tx.id} className="flex justify-between items-center text-sm">
-                <span className="text-neutral-300 truncate pr-2 max-w-[150px]" title={tx.concept}>{tx.concept}</span>
+                <span className="text-neutral-300 truncate pr-2 max-w-[150px]" title={tx.title || tx.concept}>{tx.title || tx.concept}</span>
                 <span className="text-white font-medium">{formatCurrency(tx.amount)}</span>
               </div>
             ))}

@@ -1,7 +1,7 @@
 import { supabase } from "../supabase";
 
 const CAT_COLUMNS = "id, user_id, name, created_at";
-const EXP_COLUMNS = "id, user_id, category_id, date, concept, amount, type, original_line, created_at";
+const EXP_COLUMNS = "id, user_id, category_id, date, concept, title, amount, type, original_line, created_at";
 
 export async function listPersonalCategories() {
   const { data, error } = await supabase
@@ -45,6 +45,17 @@ export async function updatePersonalExpenseCategory(expenseId, categoryId) {
   const { data, error } = await supabase
     .from("personal_expenses")
     .update({ category_id: categoryId })
+    .eq("id", expenseId)
+    .select(EXP_COLUMNS)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updatePersonalExpenseTitle(expenseId, title) {
+  const { data, error } = await supabase
+    .from("personal_expenses")
+    .update({ title })
     .eq("id", expenseId)
     .select(EXP_COLUMNS)
     .single();
