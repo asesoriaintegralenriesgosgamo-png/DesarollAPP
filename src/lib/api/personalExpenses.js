@@ -133,9 +133,12 @@ export async function listPersonalExpensePeriods() {
 }
 
 export async function createPersonalExpensePeriod(period) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("No hay sesión activa");
+  
   const { data, error } = await supabase
     .from("personal_expense_periods")
-    .insert(period)
+    .insert({ ...period, user_id: session.user.id })
     .select("*")
     .single();
   if (error) throw error;

@@ -879,6 +879,17 @@ export default function ExpenseManager() {
             </Modal>
           )}
 
+          {categoryBeingEdited && (
+            <CategoryEditModal
+              category={categoryBeingEdited}
+              onClose={() => setCategoryBeingEdited(null)}
+              onSave={async (updated) => {
+                setCategories(categories.map(c => c.id === updated.id ? updated : c));
+                setCategoryBeingEdited(null);
+              }}
+            />
+          )}
+
         </div>
       </div>
     </AppShell>
