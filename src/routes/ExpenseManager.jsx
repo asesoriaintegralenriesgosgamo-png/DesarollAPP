@@ -881,11 +881,18 @@ export default function ExpenseManager() {
 
           {categoryBeingEdited && (
             <CategoryEditModal
+              isOpen={true}
               category={categoryBeingEdited}
               onClose={() => setCategoryBeingEdited(null)}
-              onSave={async (updated) => {
-                setCategories(categories.map(c => c.id === updated.id ? updated : c));
-                setCategoryBeingEdited(null);
+              onSave={async (updates) => {
+                try {
+                  const updated = await updatePersonalCategory(categoryBeingEdited.id, updates);
+                  setCategories(categories.map(c => c.id === updated.id ? updated : c));
+                  setCategoryBeingEdited(null);
+                  toast.success('Categoría actualizada');
+                } catch (err) {
+                  toast.error('Error al actualizar categoría');
+                }
               }}
             />
           )}
