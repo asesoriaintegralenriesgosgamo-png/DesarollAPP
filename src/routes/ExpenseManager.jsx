@@ -121,10 +121,35 @@ export default function ExpenseManager() {
   const handleTransactionsExtracted = async (newTxs) => {
     if (!newTxs.length) return;
     
-    const payload = newTxs.map(tx => ({
+    // Create signatures for existing transactions to count occurrences
+    const existingSigs = {};
+    transactions.forEach(tx => {
+      const sig = `${tx.date}|${tx.amount}|${tx.type}|${tx.original_line}`;
+      existingSigs[sig] = (existingSigs[sig] || 0) + 1;
+    });
+
+    const uniqueNewTxs = [];
+    newTxs.forEach(tx => {
+      const sig = `${tx.date}|${tx.amount}|${tx.type}|${tx.originalLine}`;
+      if (existingSigs[sig] && existingSigs[sig] > 0) {
+        // It's a duplicate of an existing transaction
+        existingSigs[sig] -= 1;
+      } else {
+        // Not a duplicate, add to payload
+        uniqueNewTxs.push(tx);
+      }
+    });
+
+    if (uniqueNewTxs.length === 0) {
+      toast.info('No se encontraron gastos nuevos (todos están duplicados).');
+      return;
+    }
+
+    const payload = uniqueNewTxs.map(tx => ({
       user_id: user.id,
       date: tx.date,
       concept: tx.concept,
+      title: tx.concept,
       amount: tx.amount,
       type: tx.type,
       original_line: tx.originalLine,
@@ -135,7 +160,7 @@ export default function ExpenseManager() {
       const saved = await insertPersonalExpenses(payload);
       const mapped = saved.map(e => ({ ...e, bucket: e.category_id }));
       setTransactions(prev => [...mapped, ...prev]);
-      toast.success(`${saved.length} gastos guardados`);
+      toast.success(`${saved.length} gastos nuevos guardados`);
     } catch (err) {
       toast.error(err.message || 'Error al guardar gastos');
     }

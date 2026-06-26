@@ -6,19 +6,25 @@ export default function PdfUploader({ onTransactionsExtracted }) {
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const processFile = async (file) => {
-    if (file.type !== 'application/pdf') {
-      alert('Por favor sube un archivo PDF');
+  const processFiles = async (fileList) => {
+    const files = Array.from(fileList).filter(f => f.type === 'application/pdf');
+    if (files.length === 0) {
+      alert('Por favor sube al menos un archivo PDF');
       return;
     }
+    
     setLoading(true);
     try {
-      const lines = await extractLinesFromPDF(file);
-      const txs = parseTransactions(lines);
-      onTransactionsExtracted(txs);
+      let allTxs = [];
+      for (const file of files) {
+        const lines = await extractLinesFromPDF(file);
+        const txs = parseTransactions(lines);
+        allTxs = [...allTxs, ...txs];
+      }
+      onTransactionsExtracted(allTxs);
     } catch (e) {
       console.error(e);
-      alert('Hubo un error al procesar el PDF');
+      alert('Hubo un error al procesar los PDFs');
     } finally {
       setLoading(false);
     }
@@ -29,7 +35,7 @@ export default function PdfUploader({ onTransactionsExtracted }) {
     setIsDragging(false);
     const files = e.dataTransfer.files;
     if (files.length > 0) {
-      processFile(files[0]);
+      processFiles(files);
     }
   };
 
@@ -45,10 +51,11 @@ export default function PdfUploader({ onTransactionsExtracted }) {
       <input 
         type="file" 
         accept=".pdf" 
+        multiple
         className="hidden" 
         id="pdf-upload" 
         onChange={(e) => {
-          if (e.target.files.length > 0) processFile(e.target.files[0]);
+          if (e.target.files.length > 0) processFiles(e.target.files);
         }}
       />
       <label htmlFor="pdf-upload" className="cursor-pointer flex flex-col items-center">
