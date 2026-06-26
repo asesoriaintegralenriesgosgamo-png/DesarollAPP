@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { GripVertical, Edit2, Check, X } from 'lucide-react';
 
-export default function ExpenseCard({ transaction, onTitleChange }) {
+export default function ExpenseCard({ transaction, onTitleChange, onRightClick }) {
   const [isEditing, setIsEditing] = useState(false);
   const [tempTitle, setTempTitle] = useState(transaction.title || transaction.concept);
 
@@ -38,6 +38,12 @@ export default function ExpenseCard({ transaction, onTitleChange }) {
       ref={setNodeRef}
       style={style}
       className="bg-neutral-800 border border-neutral-700 rounded-lg p-3 shadow-md flex items-center gap-3 hover:bg-neutral-700 transition-colors group"
+      onContextMenu={(e) => {
+        if (onRightClick) {
+          e.preventDefault();
+          onRightClick(transaction);
+        }
+      }}
       {...attributes}
     >
       <div 

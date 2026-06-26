@@ -7,6 +7,7 @@ import CategoryBucket from '../components/expenses/CategoryBucket';
 import ControlsBar from '../components/expenses/ControlsBar';
 import ExpenseCharts from '../components/expenses/ExpenseCharts';
 import { AppShell } from '../components/AppShell';
+import { Modal } from '../components/ui/Modal';
 import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../components/ui/Toast';
 import { 
@@ -55,6 +56,7 @@ export default function ExpenseManager() {
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isSavingCategory, setIsSavingCategory] = useState(false);
+  const [selectedTxForModal, setSelectedTxForModal] = useState(null);
 
   useEffect(() => {
     if (user) {
@@ -247,7 +249,7 @@ export default function ExpenseManager() {
                   
                   <UnclassifiedList transactions={unclassified}>
                     {unclassified.map(tx => (
-                      <ExpenseCard key={tx.id} transaction={tx} onTitleChange={handleTitleChange} />
+                      <ExpenseCard key={tx.id} transaction={tx} onTitleChange={handleTitleChange} onRightClick={setSelectedTxForModal} />
                     ))}
                   </UnclassifiedList>
                 </div>
@@ -298,7 +300,7 @@ export default function ExpenseManager() {
                       return (
                         <CategoryBucket key={cat.id} category={cat} transactions={catTxs}>
                           {catTxs.map(tx => (
-                            <ExpenseCard key={tx.id} transaction={tx} onTitleChange={handleTitleChange} />
+                            <ExpenseCard key={tx.id} transaction={tx} onTitleChange={handleTitleChange} onRightClick={setSelectedTxForModal} />
                           ))}
                         </CategoryBucket>
                       );
@@ -321,6 +323,55 @@ export default function ExpenseManager() {
               </DragOverlay>
             </DndContext>
           )}
+
+          {/* Modal de Detalles del Gasto */}
+          {selectedTxForModal && (
+            <Modal
+              title="Detalles del Gasto"
+              onClose={() => setSelectedTxForModal(null)}
+              size="md"
+            >
+              <div className="space-y-4 text-stone-800">
+                <div>
+                  <label className="block text-xs font-semibold text-stone-500 uppercase">Concepto Original (PDF)</label>
+                  <p className="text-sm font-medium bg-stone-100 p-2 rounded mt-1 break-words">
+                    {selectedTxForModal.concept}
+                  </p>
+                </div>
+                {selectedTxForModal.title && (
+                  <div>
+                    <label className="block text-xs font-semibold text-stone-500 uppercase">Título Personalizado</label>
+                    <p className="text-sm font-medium bg-blue-50 text-blue-900 p-2 rounded mt-1 break-words">
+                      {selectedTxForModal.title}
+                    </p>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-stone-500 uppercase">Monto</label>
+                    <p className="text-lg font-bold text-stone-900 mt-1">
+                      ${Number(selectedTxForModal.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-stone-500 uppercase">Fecha</label>
+                    <p className="text-sm font-medium text-stone-900 mt-1">
+                      {selectedTxForModal.date}
+                    </p>
+                  </div>
+                </div>
+                {selectedTxForModal.original_line && (
+                  <div>
+                    <label className="block text-xs font-semibold text-stone-500 uppercase">Texto crudo extraído</label>
+                    <p className="text-xs text-stone-600 bg-stone-100 p-2 rounded mt-1 font-mono break-words">
+                      {selectedTxForModal.original_line}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </Modal>
+          )}
+
         </div>
       </div>
     </AppShell>
