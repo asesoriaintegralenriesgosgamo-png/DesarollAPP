@@ -20,40 +20,22 @@ create table public.personal_expenses (
 -- RLS para personal_expense_categories
 alter table public.personal_expense_categories enable row level security;
 
-create policy "Users can view their own personal categories"
-    on public.personal_expense_categories for select
-    using (auth.uid() = user_id);
-
-create policy "Users can insert their own personal categories"
-    on public.personal_expense_categories for insert
-    with check (auth.uid() = user_id);
-
-create policy "Users can update their own personal categories"
-    on public.personal_expense_categories for update
-    using (auth.uid() = user_id);
-
-create policy "Users can delete their own personal categories"
-    on public.personal_expense_categories for delete
-    using (auth.uid() = user_id);
+create policy "Enable all operations for users based on user_id"
+on public.personal_expense_categories
+for all
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
 
 -- RLS para personal_expenses
 alter table public.personal_expenses enable row level security;
 
-create policy "Users can view their own personal expenses"
-    on public.personal_expenses for select
-    using (auth.uid() = user_id);
-
-create policy "Users can insert their own personal expenses"
-    on public.personal_expenses for insert
-    with check (auth.uid() = user_id);
-
-create policy "Users can update their own personal expenses"
-    on public.personal_expenses for update
-    using (auth.uid() = user_id);
-
-create policy "Users can delete their own personal expenses"
-    on public.personal_expenses for delete
-    using (auth.uid() = user_id);
+create policy "Enable all operations for users based on user_id"
+on public.personal_expenses
+for all
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
 
 -- 5. GRANTs
 grant select, insert, update, delete on public.personal_expense_categories to authenticated;
