@@ -16,7 +16,8 @@ import {
   insertPersonalExpenses, 
   createPersonalCategory, 
   updatePersonalExpenseCategory,
-  updatePersonalExpenseTitle
+  updatePersonalExpenseTitle,
+  deletePersonalExpense
 } from '../lib/api/personalExpenses';
 
 function UnclassifiedList({ transactions, children }) {
@@ -88,6 +89,7 @@ export default function ExpenseManager() {
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
   const [newTx, setNewTx] = useState({ concept: '', amount: '', date: '', type: 'cargo' });
   const [isSavingTx, setIsSavingTx] = useState(false);
+  const [isDeletingTx, setIsDeletingTx] = useState(false);
 
   // Filters State
   const [sortBy, setSortBy] = useState('date');
@@ -255,6 +257,21 @@ export default function ExpenseManager() {
       toast.error(err.message || 'Error al guardar el registro');
     } finally {
       setIsSavingTx(false);
+    }
+  };
+
+  const handleDeleteTransaction = async (expenseId) => {
+    if (!window.confirm("¿Estás seguro de que quieres eliminar este movimiento?")) return;
+    setIsDeletingTx(true);
+    try {
+      await deletePersonalExpense(expenseId);
+      setTransactions(prev => prev.filter(tx => tx.id !== expenseId));
+      setSelectedTxForModal(null);
+      toast.success("Movimiento eliminado exitosamente");
+    } catch (err) {
+      toast.error(err.message || "Error al eliminar");
+    } finally {
+      setIsDeletingTx(false);
     }
   };
 
@@ -571,6 +588,22 @@ export default function ExpenseManager() {
                     </p>
                   </div>
                 )}
+                
+                <div className="pt-4 border-t border-stone-200 flex justify-between gap-2 mt-4">
+                  <button 
+                    onClick={() => handleDeleteTransaction(selectedTxForModal.id)}
+                    disabled={isDeletingTx}
+                    className="px-4 py-2 text-sm font-medium bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {isDeletingTx ? 'Eliminando...' : 'Eliminar'}
+                  </button>
+                  <button 
+                    onClick={() => setSelectedTxForModal(null)}
+                    className="px-4 py-2 text-sm font-medium bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg transition-colors"
+                  >
+                    Cerrar
+                  </button>
+                </div>
               </div>
             </Modal>
           )}
