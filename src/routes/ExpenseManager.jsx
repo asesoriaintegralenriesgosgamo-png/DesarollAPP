@@ -371,7 +371,7 @@ export default function ExpenseManager() {
   return (
     <AppShell breadcrumbs={[{ label: 'Gastos', to: '/expenses' }]}>
       <div className="bg-black text-white p-6 md:p-10 font-sans rounded-xl border border-neutral-800 min-h-screen">
-        <div className="w-full max-w-[1600px] mx-auto space-y-6">
+        <div className="w-full mx-auto space-y-6">
           
           <header className="flex flex-col xl:flex-row xl:items-end justify-between gap-6 border-b border-neutral-800 pb-6">
             <div>
@@ -543,10 +543,10 @@ export default function ExpenseManager() {
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
             >
-              <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
                 
                 {/* Columna Izquierda: No clasificados */}
-                <div className="xl:col-span-1 bg-neutral-900 border border-neutral-800 rounded-2xl p-4 flex flex-col h-[calc(100vh-200px)] sticky top-6">
+                <div className="xl:col-span-1 2xl:col-span-1 bg-neutral-900 border border-neutral-800 rounded-2xl p-4 flex flex-col h-[calc(100vh-200px)] sticky top-6">
                   <div className="flex justify-between items-center mb-4 shrink-0">
                     <h2 className="text-lg font-semibold text-white">No Clasificados</h2>
                     <span className="bg-blue-500/20 text-blue-400 text-xs py-1 px-2 rounded-full font-bold">
@@ -570,7 +570,7 @@ export default function ExpenseManager() {
                 </div>
 
                 {/* Columna Derecha: Buckets (Categorías) */}
-                <div className="xl:col-span-3">
+                <div className="xl:col-span-4 2xl:col-span-5">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
                     <h2 className="text-xl font-semibold text-white">Categorías (Buckets)</h2>
                     
@@ -609,7 +609,7 @@ export default function ExpenseManager() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
                     {categories.map(cat => {
                       // Solo procesamos las transacciones filtradas para esta categoría.
                       // Ojo, si el filtro global no es 'all' o la categoría actual, 
