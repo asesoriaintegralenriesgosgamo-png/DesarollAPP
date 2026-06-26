@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { DndContext, DragOverlay, closestCorners, useDroppable } from '@dnd-kit/core';
+import { DndContext, DragOverlay, pointerWithin, useDroppable } from '@dnd-kit/core';
 import { Plus, Loader2, BarChart2, LayoutDashboard, X, Search, Filter } from 'lucide-react';
 import PdfUploader from '../components/expenses/PdfUploader';
 import ExpenseCard from '../components/expenses/ExpenseCard';
@@ -395,7 +395,7 @@ export default function ExpenseManager() {
             <ExpenseCharts transactions={filteredAndSortedTransactions} categories={categories} />
           ) : (
             <DndContext 
-              collisionDetection={closestCorners} 
+              collisionDetection={pointerWithin} 
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
             >
