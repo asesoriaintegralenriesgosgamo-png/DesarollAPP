@@ -4,7 +4,10 @@ import {
   Utensils, Monitor, Tv, Music, Book, GraduationCap, Gift, Baby, Dumbbell, Stethoscope,
   Pill, Syringe, Scissors, Camera, Gamepad, Ticket, Bus, Train, Ship, Landmark,
   Building, Wrench, Hammer, Smile, Angry, Frown, Users, User, Dog, Cat, Fish,
-  Bird, Leaf, TreePine, Droplet, Flame, Wind, Cloud, Sun, Moon
+  Bird, Leaf, TreePine, Droplet, Flame, Wind, Cloud, Sun, Moon,
+  Umbrella, PartyPopper, Tent, Palmtree, MountainSnow, CloudRain, 
+  CloudLightning, Sunset, CloudSun, Beer, Wine, Martini, Trees,
+  MapPin, Compass, Snowflake, Waves
 } from 'lucide-react';
 
 export const CATEGORY_ICONS = {
@@ -57,7 +60,24 @@ export const CATEGORY_ICONS = {
   'wind': Wind,
   'cloud': Cloud,
   'sun': Sun,
-  'moon': Moon
+  'moon': Moon,
+  'umbrella': Umbrella,
+  'party': PartyPopper,
+  'tent': Tent,
+  'palmtree': Palmtree,
+  'mountain-snow': MountainSnow,
+  'rain': CloudRain,
+  'lightning': CloudLightning,
+  'sunset': Sunset,
+  'cloud-sun': CloudSun,
+  'beer': Beer,
+  'wine': Wine,
+  'martini': Martini,
+  'trees': Trees,
+  'map-pin': MapPin,
+  'compass': Compass,
+  'snowflake': Snowflake,
+  'waves': Waves
 };
 
 export const CATEGORY_COLORS = [
