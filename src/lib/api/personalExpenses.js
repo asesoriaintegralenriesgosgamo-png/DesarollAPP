@@ -1,12 +1,13 @@
 import { supabase } from "../supabase";
 
-const CAT_COLUMNS = "id, user_id, name, color, icon, created_at";
+const CAT_COLUMNS = "id, user_id, name, color, icon, order_index, created_at";
 const EXP_COLUMNS = "id, user_id, category_id, date, concept, title, amount, type, original_line, created_at, deleted_at";
 
 export async function listPersonalCategories() {
   const { data, error } = await supabase
     .from("personal_expense_categories")
     .select(CAT_COLUMNS)
+    .order("order_index", { ascending: true })
     .order("created_at", { ascending: true });
   if (error) throw error;
   return data;
@@ -31,6 +32,18 @@ export async function updatePersonalCategory(categoryId, updates) {
     .single();
   if (error) throw error;
   return data;
+}
+
+export async function reorderPersonalCategories(categoryIds) {
+  // Supabase doesn't easily support bulk update of different values unless using a function.
+  // We can just loop through and update individually for now since the array is small.
+  const promises = categoryIds.map((id, index) => 
+    supabase
+      .from("personal_expense_categories")
+      .update({ order_index: index })
+      .eq("id", id)
+  );
+  await Promise.all(promises);
 }
 
 export async function listPersonalExpenses() {

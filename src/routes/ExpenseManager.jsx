@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { DndContext, DragOverlay, pointerWithin, useDroppable } from '@dnd-kit/core';
+import { DndContext, DragOverlay, pointerWithin, useDroppable, closestCenter } from '@dnd-kit/core';
+import { SortableContext, arrayMove, useSortable, rectSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Plus, Loader2, BarChart2, LayoutDashboard, X, Search, Filter } from 'lucide-react';
 import PdfUploader from '../components/expenses/PdfUploader';
 import ExpenseCard from '../components/expenses/ExpenseCard';
@@ -21,9 +23,37 @@ import {
   deletePersonalExpense,
   listDeletedPersonalExpenses,
   restorePersonalExpense,
-  hardDeletePersonalExpense
+  hardDeletePersonalExpense,
+  reorderPersonalCategories,
+  listPersonalExpensePeriods
 } from '../lib/api/personalExpenses';
 import CategoryEditModal from '../components/expenses/CategoryEditModal';
+
+function SortableCategory({ category, transactions, onEditCategory, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ 
+    id: `category-${category.id}`,
+    data: { type: 'category', category }
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <CategoryBucket 
+        category={category} 
+        transactions={transactions} 
+        onEditCategory={onEditCategory}
+        dragHandleListeners={listeners}
+        dragHandleAttributes={attributes}
+      >
+        {children}
+      </CategoryBucket>
+    </div>
+  );
+}
 
 function UnclassifiedList({ transactions, children }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -82,6 +112,7 @@ export default function ExpenseManager() {
   const [transactions, setTransactions] = useState([]);
   const [deletedTransactions, setDeletedTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [periods, setPeriods] = useState([]);
   const [activeId, setActiveId] = useState(null);
   
   // UI State
@@ -117,14 +148,16 @@ export default function ExpenseManager() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cats, exps, deletedExps] = await Promise.all([
+      const [cats, exps, deletedExps, perData] = await Promise.all([
         listPersonalCategories(),
         listPersonalExpenses(),
-        listDeletedPersonalExpenses()
+        listDeletedPersonalExpenses(),
+        listPersonalExpensePeriods()
       ]);
       setCategories(cats);
       setTransactions(exps.map(e => ({ ...e, bucket: e.category_id })));
       setDeletedTransactions(deletedExps);
+      setPeriods(perData);
     } catch (err) {
       toast.error(err.message || 'Error al cargar gastos');
     } finally {
@@ -190,6 +223,26 @@ export default function ExpenseManager() {
 
     if (!over) return;
 
+    // Check if we are dragging a category
+    if (active.data.current?.type === 'category') {
+      if (active.id !== over.id) {
+        setCategories((items) => {
+          const oldIndex = items.findIndex((i) => `category-${i.id}` === active.id);
+          const newIndex = items.findIndex((i) => `category-${i.id}` === over.id);
+          const newItems = arrayMove(items, oldIndex, newIndex);
+          
+          // Background save
+          reorderPersonalCategories(newItems.map(i => i.id)).catch(() => {
+             toast.error('Error al guardar el nuevo orden');
+          });
+          
+          return newItems;
+        });
+      }
+      return;
+    }
+
+    // Otherwise, we are dragging an expense
     const transactionId = active.id;
     const overId = over.id; 
     const newCategoryId = overId === 'unclassified' ? null : overId;
@@ -556,7 +609,12 @@ export default function ExpenseManager() {
               )}
             </div>
           ) : viewMode === 'analytics' ? (
-            <ExpenseCharts transactions={filteredAndSortedTransactions} categories={categories} />
+            <ExpenseCharts 
+              transactions={filteredAndSortedTransactions} 
+              categories={categories} 
+              periods={periods}
+              onPeriodsChange={setPeriods}
+            />
           ) : (
             <DndContext 
               collisionDetection={pointerWithin} 
@@ -630,28 +688,28 @@ export default function ExpenseManager() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
-                    {categories.map(cat => {
-                      // Solo procesamos las transacciones filtradas para esta categoría.
-                      // Ojo, si el filtro global no es 'all' o la categoría actual, 
-                      // la categoría podría quedar vacía.
-                      const catTxs = filteredAndSortedTransactions.filter(tx => tx.bucket === cat.id);
-                      
-                      // Si hay un filtro global de bucket y no es éste, ocultamos la categoría entera.
-                      if (filterBucket !== 'all' && filterBucket !== cat.id) return null;
+                    <SortableContext 
+                      items={categories.map(c => `category-${c.id}`)}
+                      strategy={rectSortingStrategy}
+                    >
+                      {categories.map(cat => {
+                        const catTxs = filteredAndSortedTransactions.filter(tx => tx.bucket === cat.id);
+                        if (filterBucket !== 'all' && filterBucket !== cat.id) return null;
 
-                      return (
-                        <CategoryBucket 
-                          key={cat.id} 
-                          category={cat} 
-                          transactions={catTxs}
-                          onEditCategory={setCategoryBeingEdited}
-                        >
-                          {catTxs.map(tx => (
-                            <ExpenseCard key={tx.id} transaction={tx} onTitleChange={handleTitleChange} onRightClick={setSelectedTxForModal} />
-                          ))}
-                        </CategoryBucket>
-                      );
-                    })}
+                        return (
+                          <SortableCategory 
+                            key={cat.id} 
+                            category={cat} 
+                            transactions={catTxs}
+                            onEditCategory={setCategoryBeingEdited}
+                          >
+                            {catTxs.map(tx => (
+                              <ExpenseCard key={tx.id} transaction={tx} onTitleChange={handleTitleChange} onRightClick={setSelectedTxForModal} />
+                            ))}
+                          </SortableCategory>
+                        );
+                      })}
+                    </SortableContext>
                     {categories.length === 0 && (
                       <div className="col-span-full p-10 text-center border-2 border-dashed border-neutral-800 rounded-xl text-neutral-500">
                         Aún no tienes categorías. Crea una arriba a la derecha.

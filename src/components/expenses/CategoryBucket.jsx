@@ -1,9 +1,9 @@
 import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { renderCategoryIcon } from './CategoryIcons';
-import { Edit2 } from 'lucide-react';
+import { Edit2, GripHorizontal } from 'lucide-react';
 
-export default function CategoryBucket({ category, transactions, onEditCategory, children }) {
+export default function CategoryBucket({ category, transactions, onEditCategory, dragHandleListeners, dragHandleAttributes, children }) {
   const { setNodeRef, isOver } = useDroppable({
     id: category.id,
   });
@@ -29,6 +29,15 @@ export default function CategoryBucket({ category, transactions, onEditCategory,
         }}
       >
         <div className="flex items-center gap-2 overflow-hidden">
+          {dragHandleListeners && (
+            <div 
+              className="cursor-grab text-neutral-500 hover:text-white shrink-0 mr-1"
+              {...dragHandleListeners}
+              {...dragHandleAttributes}
+            >
+              <GripHorizontal className="w-5 h-5" />
+            </div>
+          )}
           {category.icon && (
             <div className="shrink-0">
               {renderCategoryIcon(category.icon, category.color)}

@@ -3,20 +3,55 @@ import {
   PieChart,
   Pie,
   Cell,
-  BarChart,
+  ComposedChart,
   Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend
+  Legend,
+  Brush,
+  ReferenceArea
 } from 'recharts';
+import { format, parseISO, isValid } from 'date-fns';
+import { Plus, Trash2 } from 'lucide-react';
+import { createPersonalExpensePeriod, deletePersonalExpensePeriod } from '../../lib/api/personalExpenses';
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#a855f7', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#10b981', '#14b8a6', '#06b6d4'];
 
-export default function ExpenseCharts({ transactions, categories }) {
-  const { pieData, barData, topExpenses } = useMemo(() => {
+export default function ExpenseCharts({ transactions, categories, periods = [], onPeriodsChange }) {
+  const [isAddingPeriod, setIsAddingPeriod] = React.useState(false);
+  const [newPeriod, setNewPeriod] = React.useState({ name: '', start_date: '', end_date: '', color: '#ef4444' });
+
+  const handleAddPeriod = async (e) => {
+    e.preventDefault();
+    if (!newPeriod.name || !newPeriod.start_date || !newPeriod.end_date) return;
+    
+    try {
+      const added = await createPersonalExpensePeriod(newPeriod);
+      if (onPeriodsChange) {
+        onPeriodsChange([...periods, added]);
+      }
+      setIsAddingPeriod(false);
+      setNewPeriod({ name: '', start_date: '', end_date: '', color: '#ef4444' });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeletePeriod = async (id) => {
+    try {
+      await deletePersonalExpensePeriod(id);
+      if (onPeriodsChange) {
+        onPeriodsChange(periods.filter(p => p.id !== id));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const { pieData, barData, topExpenses } = React.useMemo(() => {
     // Process Pie Chart Data (Only classified expenses)
     const categoryTotals = {};
     let unclassifiedTotal = 0;
@@ -42,18 +77,23 @@ export default function ExpenseCharts({ transactions, categories }) {
       pData.push({ name: 'Sin Clasificar', value: unclassifiedTotal });
     }
 
-    // Process Bar Chart Data (Timeline)
+    // Process Bar Chart Data (Timeline with categories)
     const dateTotals = {};
     transactions.forEach(tx => {
       const date = tx.date || 'Desconocida';
       if (!dateTotals[date]) {
-        dateTotals[date] = { date, amount: 0 };
+        dateTotals[date] = { date, amount: 0, _rawDate: date };
       }
-      dateTotals[date].amount += Number(tx.amount) || 0;
+      
+      const amount = Number(tx.amount) || 0;
+      dateTotals[date].amount += amount;
+      
+      const catKey = tx.bucket || 'unclassified';
+      dateTotals[date][catKey] = (dateTotals[date][catKey] || 0) + amount;
     });
 
-    // Attempt to sort dates if they follow basic patterns, otherwise alphabetical
-    const bData = Object.values(dateTotals).sort((a, b) => a.date.localeCompare(b.date));
+    // Sort dates
+    const bData = Object.values(dateTotals).sort((a, b) => a._rawDate.localeCompare(b._rawDate));
 
     // Get Top Expenses
     const tExpenses = [...transactions].sort((a, b) => b.amount - a.amount).slice(0, 5);
@@ -106,11 +146,70 @@ export default function ExpenseCharts({ transactions, categories }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
         {/* Timeline / Bar Chart */}
-        <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl h-[400px] flex flex-col">
-          <h3 className="text-lg font-semibold text-white mb-6">Línea del Tiempo</h3>
+        <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl h-[500px] flex flex-col">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-lg font-semibold text-white">Línea del Tiempo</h3>
+            <button 
+              onClick={() => setIsAddingPeriod(!isAddingPeriod)}
+              className="text-xs bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors"
+            >
+              <Plus className="w-3 h-3" /> Añadir Periodo (Viaje/Evento)
+            </button>
+          </div>
+          
+          {isAddingPeriod && (
+            <form onSubmit={handleAddPeriod} className="flex flex-wrap gap-3 mb-6 bg-neutral-950 p-4 rounded-xl border border-neutral-800">
+              <input 
+                type="text" 
+                placeholder="Nombre (ej. Viaje a Cancún)" 
+                value={newPeriod.name}
+                onChange={e => setNewPeriod({...newPeriod, name: e.target.value})}
+                className="bg-neutral-900 border border-neutral-800 text-white text-sm rounded-lg px-3 py-2 flex-1 min-w-[200px]"
+                required
+              />
+              <input 
+                type="date" 
+                value={newPeriod.start_date}
+                onChange={e => setNewPeriod({...newPeriod, start_date: e.target.value})}
+                className="bg-neutral-900 border border-neutral-800 text-white text-sm rounded-lg px-3 py-2"
+                required
+              />
+              <input 
+                type="date" 
+                value={newPeriod.end_date}
+                onChange={e => setNewPeriod({...newPeriod, end_date: e.target.value})}
+                className="bg-neutral-900 border border-neutral-800 text-white text-sm rounded-lg px-3 py-2"
+                required
+              />
+              <input 
+                type="color" 
+                value={newPeriod.color}
+                onChange={e => setNewPeriod({...newPeriod, color: e.target.value})}
+                className="bg-neutral-900 border border-neutral-800 rounded-lg w-10 h-10 p-1 cursor-pointer"
+              />
+              <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                Guardar
+              </button>
+            </form>
+          )}
+
+          {periods.length > 0 && !isAddingPeriod && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {periods.map(p => (
+                <div key={p.id} className="flex items-center gap-2 bg-neutral-950 border border-neutral-800 px-3 py-1.5 rounded-full text-xs text-neutral-300">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span>
+                  {p.name}
+                  <button onClick={() => handleDeletePeriod(p.id)} className="text-neutral-500 hover:text-red-400 ml-1">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex-1 min-h-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={barData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+              <ComposedChart data={barData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
                 <XAxis 
                   dataKey="date" 
@@ -129,10 +228,40 @@ export default function ExpenseCharts({ transactions, categories }) {
                   cursor={{ fill: '#333' }}
                   contentStyle={{ backgroundColor: '#171717', border: '1px solid #333', borderRadius: '8px', color: '#fff' }}
                   itemStyle={{ color: '#fff' }}
-                  formatter={(value) => [formatCurrency(value), 'Monto']}
+                  formatter={(value, name) => {
+                    const catName = name === 'unclassified' ? 'Sin Clasificar' : categories.find(c => c.id === name)?.name || name;
+                    return [formatCurrency(value), catName];
+                  }}
                 />
-                <Bar dataKey="amount" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              </BarChart>
+                
+                {/* Bars stacked by category */}
+                <Bar dataKey="unclassified" stackId="a" fill="#525252" />
+                {categories.map(cat => (
+                  <Bar key={cat.id} dataKey={cat.id} stackId="a" fill={cat.color || '#3b82f6'} />
+                ))}
+                
+                
+                {/* Referencias de periodos */}
+                {periods.map(period => (
+                  <ReferenceArea 
+                    key={period.id}
+                    x1={period.start_date} 
+                    x2={period.end_date} 
+                    strokeOpacity={0.3} 
+                    fill={period.color} 
+                    fillOpacity={0.15} 
+                    label={{ position: 'top', value: period.name, fill: period.color, fontSize: 12 }} 
+                  />
+                ))}
+
+                <Brush 
+                  dataKey="date" 
+                  height={30} 
+                  stroke="#404040" 
+                  fill="#171717"
+                  tickFormatter={() => ''} 
+                />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>
@@ -154,9 +283,12 @@ export default function ExpenseCharts({ transactions, categories }) {
                     dataKey="value"
                     stroke="none"
                   >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.name === 'Sin Clasificar' ? '#525252' : COLORS[index % COLORS.length]} />
-                    ))}
+                    {pieData.map((entry, index) => {
+                      const color = entry.name === 'Sin Clasificar' 
+                        ? '#525252' 
+                        : (categories.find(c => c.name === entry.name)?.color || COLORS[index % COLORS.length]);
+                      return <Cell key={`cell-${index}`} fill={color} />;
+                    })}
                   </Pie>
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#171717', border: '1px solid #333', borderRadius: '8px', color: '#fff' }}
