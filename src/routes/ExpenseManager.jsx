@@ -83,6 +83,11 @@ export default function ExpenseManager() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isSavingCategory, setIsSavingCategory] = useState(false);
   const [selectedTxForModal, setSelectedTxForModal] = useState(null);
+  
+  // Manual Transaction State
+  const [isAddingTransaction, setIsAddingTransaction] = useState(false);
+  const [newTx, setNewTx] = useState({ concept: '', amount: '', date: '', type: 'cargo' });
+  const [isSavingTx, setIsSavingTx] = useState(false);
 
   // Filters State
   const [sortBy, setSortBy] = useState('date');
@@ -194,6 +199,37 @@ export default function ExpenseManager() {
     } catch (err) {
       toast.error('Error al actualizar el título');
       loadData();
+    }
+  };
+
+  const submitNewTransaction = async (e) => {
+    e.preventDefault();
+    if (!newTx.concept || !newTx.amount || !newTx.date) return;
+
+    setIsSavingTx(true);
+    try {
+      const payload = [{
+        user_id: user.id,
+        date: newTx.date, // Native YYYY-MM-DD works fine
+        concept: newTx.concept,
+        title: newTx.concept, // By default set title as concept
+        amount: Number(newTx.amount) || 0,
+        type: newTx.type,
+        original_line: 'Registro manual',
+        category_id: null
+      }];
+      
+      const saved = await insertPersonalExpenses(payload);
+      const mapped = saved.map(item => ({ ...item, bucket: item.category_id }));
+      setTransactions(prev => [...mapped, ...prev]);
+      
+      toast.success('Registro añadido');
+      setIsAddingTransaction(false);
+      setNewTx({ concept: '', amount: '', date: '', type: 'cargo' });
+    } catch (err) {
+      toast.error(err.message || 'Error al guardar el registro');
+    } finally {
+      setIsSavingTx(false);
     }
   };
 
@@ -322,16 +358,27 @@ export default function ExpenseManager() {
                 <button 
                   onClick={() => setViewMode('board')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${viewMode === 'board' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
+                  title="Tablero"
                 >
-                  <LayoutDashboard className="w-4 h-4" /> Tablero
+                  <LayoutDashboard className="w-4 h-4" />
                 </button>
                 <button 
                   onClick={() => setViewMode('analytics')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${viewMode === 'analytics' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
+                  title="Analítica"
                 >
-                  <BarChart2 className="w-4 h-4" /> Analítica
+                  <BarChart2 className="w-4 h-4" />
                 </button>
               </div>
+
+              {/* Add Record Button */}
+              <button 
+                onClick={() => setIsAddingTransaction(true)}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0"
+                title="Añadir Registro Manual"
+              >
+                <Plus className="w-4 h-4" /> Registro
+              </button>
             </div>
           </header>
 
@@ -500,6 +547,92 @@ export default function ExpenseManager() {
                   </div>
                 )}
               </div>
+            </Modal>
+          )}
+
+          {/* Modal para Añadir Registro Manual */}
+          {isAddingTransaction && (
+            <Modal
+              title="Añadir Registro Manual"
+              onClose={() => setIsAddingTransaction(false)}
+              size="md"
+            >
+              <form onSubmit={submitNewTransaction} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">Concepto / Título</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={newTx.concept}
+                    onChange={e => setNewTx({...newTx, concept: e.target.value})}
+                    placeholder="Ej. Supermercado, Sueldo..."
+                    className="w-full bg-white border border-stone-300 text-stone-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-stone-700 mb-1">Monto</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-500">$</span>
+                      <input 
+                        type="number"
+                        step="0.01"
+                        required
+                        value={newTx.amount}
+                        onChange={e => setNewTx({...newTx, amount: e.target.value})}
+                        placeholder="0.00"
+                        className="w-full bg-white border border-stone-300 text-stone-900 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-stone-700 mb-1">Fecha</label>
+                    <input 
+                      type="date"
+                      required
+                      value={newTx.date}
+                      onChange={e => setNewTx({...newTx, date: e.target.value})}
+                      className="w-full bg-white border border-stone-300 text-stone-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">Tipo de Movimiento</label>
+                  <div className="flex bg-stone-100 rounded-lg p-1 border border-stone-200">
+                    <button
+                      type="button"
+                      onClick={() => setNewTx({...newTx, type: 'cargo'})}
+                      className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${newTx.type === 'cargo' ? 'bg-white shadow text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
+                    >
+                      Cargo (Gasto)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewTx({...newTx, type: 'abono'})}
+                      className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${newTx.type === 'abono' ? 'bg-white shadow text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
+                    >
+                      Abono (Ingreso)
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="pt-4 border-t border-stone-200 flex justify-end gap-2">
+                  <button 
+                    type="button"
+                    onClick={() => setIsAddingTransaction(false)}
+                    className="px-4 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100 rounded-lg transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={isSavingTx}
+                    className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {isSavingTx ? 'Guardando...' : 'Guardar Registro'}
+                  </button>
+                </div>
+              </form>
             </Modal>
           )}
 
