@@ -1,21 +1,21 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { DndContext, DragOverlay, closestCorners, useDroppable } from '@dnd-kit/core';
-import { Plus } from 'lucide-react';
+import { Plus, Loader2, BarChart2, LayoutDashboard, X } from 'lucide-react';
 import PdfUploader from '../components/expenses/PdfUploader';
 import ExpenseCard from '../components/expenses/ExpenseCard';
 import CategoryBucket from '../components/expenses/CategoryBucket';
 import ControlsBar from '../components/expenses/ControlsBar';
-
+import ExpenseCharts from '../components/expenses/ExpenseCharts';
 import { AppShell } from '../components/AppShell';
-
-// Categorías por defecto
-const DEFAULT_CATEGORIES = [
-  { id: 'cat-groceries', name: 'Supermercado' },
-  { id: 'cat-transport', name: 'Transporte' },
-  { id: 'cat-dining', name: 'Comida/Restaurantes' },
-  { id: 'cat-utilities', name: 'Servicios' },
-  { id: 'cat-entertainment', name: 'Entretenimiento' },
-];
+import { useAuth } from '../lib/AuthContext';
+import { useToast } from '../components/ui/Toast';
+import { 
+  listPersonalCategories, 
+  listPersonalExpenses, 
+  insertPersonalExpenses, 
+  createPersonalCategory, 
+  updatePersonalExpenseCategory 
+} from '../lib/api/personalExpenses';
 
 function UnclassifiedList({ transactions, children }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -40,36 +40,113 @@ function UnclassifiedList({ transactions, children }) {
 }
 
 export default function ExpenseManager() {
+  const { user } = useAuth();
+  const toast = useToast();
+  
+  const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState([]);
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState([]);
   const [activeId, setActiveId] = useState(null);
-  const [sortBy, setSortBy] = useState('date'); // 'date', 'amount', 'concept'
+  const [sortBy, setSortBy] = useState('date');
+  
+  // UI State
+  const [viewMode, setViewMode] = useState('board'); // 'board' | 'analytics'
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
 
-  const handleTransactionsExtracted = (newTxs) => {
-    setTransactions((prev) => [...prev, ...newTxs]);
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+  }, [user]);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [cats, exps] = await Promise.all([
+        listPersonalCategories(),
+        listPersonalExpenses()
+      ]);
+      setCategories(cats);
+      setTransactions(exps.map(e => ({ ...e, bucket: e.category_id })));
+    } catch (err) {
+      toast.error(err.message || 'Error al cargar gastos');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTransactionsExtracted = async (newTxs) => {
+    if (!newTxs.length) return;
+    
+    const payload = newTxs.map(tx => ({
+      user_id: user.id,
+      date: tx.date,
+      concept: tx.concept,
+      amount: tx.amount,
+      type: tx.type,
+      original_line: tx.originalLine,
+      category_id: null
+    }));
+
+    try {
+      const saved = await insertPersonalExpenses(payload);
+      const mapped = saved.map(e => ({ ...e, bucket: e.category_id }));
+      setTransactions(prev => [...mapped, ...prev]);
+      toast.success(`${saved.length} gastos guardados`);
+    } catch (err) {
+      toast.error(err.message || 'Error al guardar gastos');
+    }
   };
 
   const handleDragStart = (event) => {
     setActiveId(event.active.id);
   };
 
-  const handleDragEnd = (event) => {
+  const handleDragEnd = async (event) => {
     const { active, over } = event;
     setActiveId(null);
 
     if (!over) return;
 
     const transactionId = active.id;
-    const overId = over.id;
+    const overId = over.id; 
+    const newCategoryId = overId === 'unclassified' ? null : overId;
 
     setTransactions((prev) => 
       prev.map(tx => {
         if (tx.id === transactionId) {
-          return { ...tx, bucket: overId === 'unclassified' ? null : overId };
+          return { ...tx, bucket: newCategoryId };
         }
         return tx;
       })
     );
+
+    try {
+      await updatePersonalExpenseCategory(transactionId, newCategoryId);
+    } catch (err) {
+      toast.error('No se pudo actualizar la categoría');
+      loadData();
+    }
+  };
+
+  const submitNewCategory = async (e) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+
+    setIsSavingCategory(true);
+    try {
+      const newCat = await createPersonalCategory({ name: newCategoryName.trim(), userId: user.id });
+      setCategories(prev => [...prev, newCat]);
+      setNewCategoryName('');
+      setIsAddingCategory(false);
+      toast.success('Categoría creada');
+    } catch (err) {
+      toast.error(err.message || 'Error al crear categoría');
+    } finally {
+      setIsSavingCategory(false);
+    }
   };
 
   const sortedTransactions = useMemo(() => {
@@ -79,7 +156,6 @@ export default function ExpenseManager() {
       } else if (sortBy === 'concept') {
         return a.concept.localeCompare(b.concept);
       } else {
-        // Orden original o por fecha básica
         return (a.date || '').localeCompare(b.date || '');
       }
     });
@@ -90,30 +166,44 @@ export default function ExpenseManager() {
 
   return (
     <AppShell breadcrumbs={[{ label: 'Gastos', to: '/expenses' }]}>
-      <div className="bg-black text-white p-6 md:p-10 font-sans rounded-xl border border-neutral-800">
+      <div className="bg-black text-white p-6 md:p-10 font-sans rounded-xl border border-neutral-800 min-h-screen">
         <div className="max-w-7xl mx-auto space-y-8">
           
-          <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-neutral-800 pb-6">
             <div>
               <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-500">
                 Expense Manager
               </h1>
-              <p className="text-neutral-400 mt-1">Sube tus estados de cuenta y organiza tus gastos arrastrándolos.</p>
+              <p className="text-neutral-400 mt-1">Organiza y visualiza tus estados de cuenta.</p>
             </div>
-            {transactions.length > 0 && (
-              <div className="bg-neutral-900 rounded-lg p-3 px-6 border border-neutral-800 text-center shadow-lg">
-                <p className="text-xs text-neutral-400 uppercase tracking-wider font-semibold mb-1">Total Extraído</p>
-                <p className="text-2xl font-bold text-white">
-                  ${transactions.reduce((sum, tx) => sum + tx.amount, 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                </p>
-              </div>
-            )}
+            
+            <div className="flex bg-neutral-900 rounded-lg p-1 border border-neutral-800 self-start md:self-auto">
+              <button 
+                onClick={() => setViewMode('board')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${viewMode === 'board' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
+              >
+                <LayoutDashboard className="w-4 h-4" /> Clasificación
+              </button>
+              <button 
+                onClick={() => setViewMode('analytics')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${viewMode === 'analytics' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
+              >
+                <BarChart2 className="w-4 h-4" /> Analítica
+              </button>
+            </div>
           </header>
 
-          {transactions.length === 0 ? (
-            <div className="max-w-2xl mx-auto mt-12">
+          {loading ? (
+             <div className="flex justify-center py-20">
+               <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+             </div>
+          ) : transactions.length === 0 ? (
+            <div className="max-w-2xl mx-auto mt-12 text-center space-y-6">
+              <p className="text-neutral-400 text-lg">Aún no tienes gastos registrados.</p>
               <PdfUploader onTransactionsExtracted={handleTransactionsExtracted} />
             </div>
+          ) : viewMode === 'analytics' ? (
+            <ExpenseCharts transactions={transactions} categories={categories} />
           ) : (
             <DndContext 
               collisionDetection={closestCorners} 
@@ -131,7 +221,11 @@ export default function ExpenseManager() {
                     </span>
                   </div>
                   
-                  <div className="shrink-0">
+                  <div className="shrink-0 mb-4">
+                    <PdfUploader onTransactionsExtracted={handleTransactionsExtracted} />
+                  </div>
+
+                  <div className="shrink-0 mb-2">
                     <ControlsBar sortBy={sortBy} setSortBy={setSortBy} />
                   </div>
                   
@@ -144,12 +238,44 @@ export default function ExpenseManager() {
 
                 {/* Columna Derecha: Buckets (Categorías) */}
                 <div className="xl:col-span-3">
-                  <div className="flex justify-between items-center mb-6">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
                     <h2 className="text-xl font-semibold text-white">Categorías (Buckets)</h2>
-                    <button className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors bg-blue-500/10 hover:bg-blue-500/20 px-4 py-2 rounded-lg font-medium border border-blue-500/20">
-                      <Plus className="w-4 h-4" /> Nueva Categoría
-                    </button>
+                    
+                    {isAddingCategory ? (
+                      <form onSubmit={submitNewCategory} className="flex items-center gap-2">
+                        <input 
+                          type="text" 
+                          autoFocus
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          placeholder="Nombre de categoría"
+                          className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <button 
+                          type="submit" 
+                          disabled={isSavingCategory || !newCategoryName.trim()}
+                          className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                        >
+                          Guardar
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => { setIsAddingCategory(false); setNewCategoryName(''); }}
+                          className="p-2 text-neutral-400 hover:text-white bg-neutral-800 hover:bg-neutral-700 rounded-lg transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </form>
+                    ) : (
+                      <button 
+                        onClick={() => setIsAddingCategory(true)}
+                        className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors bg-blue-500/10 hover:bg-blue-500/20 px-4 py-2 rounded-lg font-medium border border-blue-500/20"
+                      >
+                        <Plus className="w-4 h-4" /> Nueva Categoría
+                      </button>
+                    )}
                   </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {categories.map(cat => {
                       const catTxs = sortedTransactions.filter(tx => tx.bucket === cat.id);
@@ -161,6 +287,11 @@ export default function ExpenseManager() {
                         </CategoryBucket>
                       );
                     })}
+                    {categories.length === 0 && (
+                      <div className="col-span-full p-10 text-center border-2 border-dashed border-neutral-800 rounded-xl text-neutral-500">
+                        Aún no tienes categorías. Crea una arriba a la derecha.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
