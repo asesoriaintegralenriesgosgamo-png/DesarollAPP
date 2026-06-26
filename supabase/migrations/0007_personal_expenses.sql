@@ -54,3 +54,7 @@ create policy "Users can update their own personal expenses"
 create policy "Users can delete their own personal expenses"
     on public.personal_expenses for delete
     using (auth.uid() = user_id);
+
+-- 5. GRANTs
+grant select, insert, update, delete on public.personal_expense_categories to authenticated;
+grant select, insert, update, delete on public.personal_expenses to authenticated;
