@@ -1,7 +1,7 @@
 import { supabase } from "../supabase";
 
 const CAT_COLUMNS = "id, user_id, name, created_at";
-const EXP_COLUMNS = "id, user_id, category_id, date, concept, title, amount, type, original_line, created_at";
+const EXP_COLUMNS = "id, user_id, category_id, date, concept, title, amount, type, original_line, created_at, deleted_at";
 
 export async function listPersonalCategories() {
   const { data, error } = await supabase
@@ -26,6 +26,7 @@ export async function listPersonalExpenses() {
   const { data, error } = await supabase
     .from("personal_expenses")
     .select(EXP_COLUMNS)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data;
@@ -66,7 +67,33 @@ export async function updatePersonalExpenseTitle(expenseId, title) {
 export async function deletePersonalExpense(expenseId) {
   const { error } = await supabase
     .from("personal_expenses")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", expenseId);
+  if (error) throw error;
+}
+
+export async function restorePersonalExpense(expenseId) {
+  const { error } = await supabase
+    .from("personal_expenses")
+    .update({ deleted_at: null })
+    .eq("id", expenseId);
+  if (error) throw error;
+}
+
+export async function hardDeletePersonalExpense(expenseId) {
+  const { error } = await supabase
+    .from("personal_expenses")
     .delete()
     .eq("id", expenseId);
   if (error) throw error;
+}
+
+export async function listDeletedPersonalExpenses() {
+  const { data, error } = await supabase
+    .from("personal_expenses")
+    .select(EXP_COLUMNS)
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false });
+  if (error) throw error;
+  return data;
 }

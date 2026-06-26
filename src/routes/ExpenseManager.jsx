@@ -17,7 +17,10 @@ import {
   createPersonalCategory, 
   updatePersonalExpenseCategory,
   updatePersonalExpenseTitle,
-  deletePersonalExpense
+  deletePersonalExpense,
+  listDeletedPersonalExpenses,
+  restorePersonalExpense,
+  hardDeletePersonalExpense
 } from '../lib/api/personalExpenses';
 
 function UnclassifiedList({ transactions, children }) {
@@ -75,11 +78,12 @@ export default function ExpenseManager() {
   
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState([]);
+  const [deletedTransactions, setDeletedTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [activeId, setActiveId] = useState(null);
   
   // UI State
-  const [viewMode, setViewMode] = useState('board'); // 'board' | 'analytics'
+  const [viewMode, setViewMode] = useState('board'); // 'board' | 'analytics' | 'trash'
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isSavingCategory, setIsSavingCategory] = useState(false);
@@ -107,12 +111,14 @@ export default function ExpenseManager() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cats, exps] = await Promise.all([
+      const [cats, exps, deletedExps] = await Promise.all([
         listPersonalCategories(),
-        listPersonalExpenses()
+        listPersonalExpenses(),
+        listDeletedPersonalExpenses()
       ]);
       setCategories(cats);
       setTransactions(exps.map(e => ({ ...e, bucket: e.category_id })));
+      setDeletedTransactions(deletedExps);
     } catch (err) {
       toast.error(err.message || 'Error al cargar gastos');
     } finally {
@@ -267,7 +273,8 @@ export default function ExpenseManager() {
       await deletePersonalExpense(expenseId);
       setTransactions(prev => prev.filter(tx => tx.id !== expenseId));
       setSelectedTxForModal(null);
-      toast.success("Movimiento eliminado exitosamente");
+      toast.success("Movimiento enviado a la papelera");
+      loadData(); // reload to get it in deletedTransactions
     } catch (err) {
       toast.error(err.message || "Error al eliminar");
     } finally {
@@ -326,6 +333,40 @@ export default function ExpenseManager() {
 
   const unclassified = filteredAndSortedTransactions.filter(tx => !tx.bucket);
   const activeTx = transactions.find(tx => tx.id === activeId);
+
+  const handleRestore = async (id) => {
+    try {
+      await restorePersonalExpense(id);
+      toast.success('Movimiento restaurado');
+      loadData();
+    } catch (err) {
+      toast.error('Error al restaurar');
+    }
+  };
+
+  const handleHardDelete = async (id) => {
+    if (!window.confirm("¿Seguro que quieres eliminar este movimiento definitivamente? Esta acción no se puede deshacer.")) return;
+    try {
+      await hardDeletePersonalExpense(id);
+      toast.success('Movimiento eliminado permanentemente');
+      loadData();
+    } catch (err) {
+      toast.error('Error al eliminar');
+    }
+  };
+
+  // Compute days left in trash
+  const getDaysLeft = (deletedAt) => {
+    if (!deletedAt) return 0;
+    const deletedDate = new Date(deletedAt);
+    const expirationDate = new Date(deletedDate.getTime() + 365 * 24 * 60 * 60 * 1000);
+    const now = new Date();
+    const diff = expirationDate - now;
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
+
+  // Filter out expired items logically (if not purged from db yet)
+  const validDeletedTxs = deletedTransactions.filter(tx => getDaysLeft(tx.deleted_at) > 0);
 
   return (
     <AppShell breadcrumbs={[{ label: 'Gastos', to: '/expenses' }]}>
@@ -411,6 +452,15 @@ export default function ExpenseManager() {
                 >
                   <BarChart2 className="w-4 h-4" />
                 </button>
+                <button 
+                  onClick={() => setViewMode('trash')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${viewMode === 'trash' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
+                  title="Papelera"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
               </div>
 
               {/* Add Record Button */}
@@ -432,6 +482,58 @@ export default function ExpenseManager() {
             <div className="max-w-2xl mx-auto mt-12 text-center space-y-6">
               <p className="text-neutral-400 text-lg">Aún no tienes gastos registrados.</p>
               <PdfUploader onTransactionsExtracted={handleTransactionsExtracted} />
+            </div>
+          ) : viewMode === 'trash' ? (
+            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-6 border-b border-neutral-800 pb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <h2 className="text-xl font-bold text-white">Papelera de Reciclaje</h2>
+                <span className="text-neutral-400 text-sm ml-2">(Se conservan por 365 días)</span>
+              </div>
+              
+              {validDeletedTxs.length === 0 ? (
+                <div className="text-center py-12 text-neutral-500">
+                  La papelera está vacía.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {validDeletedTxs.map(tx => (
+                    <div key={tx.id} className="bg-neutral-800 border border-neutral-700 rounded-lg p-4 flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-white font-medium">{tx.title || tx.concept}</p>
+                        <div className="flex gap-4 text-sm text-neutral-400 mt-1">
+                          <span>{tx.date}</span>
+                          <span className={tx.type === 'abono' ? 'text-emerald-400' : 'text-rose-400'}>
+                            {tx.type === 'cargo' ? '-' : '+'}${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </span>
+                          <span className="text-amber-500 flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                            </svg>
+                            {getDaysLeft(tx.deleted_at)} días restantes
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => handleRestore(tx.id)}
+                          className="bg-neutral-700 hover:bg-neutral-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors"
+                        >
+                          Restaurar
+                        </button>
+                        <button 
+                          onClick={() => handleHardDelete(tx.id)}
+                          className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-3 py-1.5 rounded text-sm font-medium transition-colors"
+                        >
+                          Eliminar Definitivamente
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ) : viewMode === 'analytics' ? (
             <ExpenseCharts transactions={filteredAndSortedTransactions} categories={categories} />
