@@ -102,8 +102,8 @@ export default function ExpenseCard({ transaction, onTitleChange, onRightClick }
       </div>
       
       <div className="text-right shrink-0">
-        <p className="text-sm font-bold text-white">
-          ${transaction.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+        <p className={`text-sm font-bold ${transaction.type === 'abono' ? 'text-emerald-400' : 'text-rose-400'}`}>
+          {transaction.type === 'cargo' ? '-' : '+'}${transaction.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
         </p>
       </div>
     </div>
