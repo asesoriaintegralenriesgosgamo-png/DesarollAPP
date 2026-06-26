@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { DndContext, DragOverlay, closestCorners, useDroppable } from '@dnd-kit/core';
-import { Plus, Loader2, BarChart2, LayoutDashboard, X } from 'lucide-react';
+import { Plus, Loader2, BarChart2, LayoutDashboard, X, Search, Filter } from 'lucide-react';
 import PdfUploader from '../components/expenses/PdfUploader';
 import ExpenseCard from '../components/expenses/ExpenseCard';
 import CategoryBucket from '../components/expenses/CategoryBucket';
@@ -34,11 +34,38 @@ function UnclassifiedList({ transactions, children }) {
       {children}
       {transactions.length === 0 && (
         <div className="text-center p-8 text-neutral-500 text-sm italic">
-          Todo está clasificado.
+          Todo está clasificado o no hay coincidencias.
         </div>
       )}
     </div>
   );
+}
+
+function parseDateString(dateStr) {
+  if (!dateStr) return new Date(0);
+  // Amex format: "20 de Febrero"
+  const amexMatch = dateStr.match(/(\d{1,2})\s+de\s+([A-Za-z]+)/i);
+  if (amexMatch) {
+    const day = parseInt(amexMatch[1], 10);
+    const monthStr = amexMatch[2].toLowerCase();
+    const months = { enero:0, febrero:1, marzo:2, abril:3, mayo:4, junio:5, julio:6, agosto:7, septiembre:8, octubre:9, noviembre:10, diciembre:11,
+                     ene:0, feb:1, mar:2, abr:3, may:4, jun:5, jul:6, ago:7, sep:8, oct:9, nov:10, dic:11 };
+    const month = months[monthStr] !== undefined ? months[monthStr] : 0;
+    const year = new Date().getFullYear();
+    return new Date(year, month, day);
+  }
+  
+  // BBVA format: "06-ene-2026" or similar
+  const bbvaMatch = dateStr.match(/(\d{1,2})-([a-z]{3})-(\d{4})/i);
+  if (bbvaMatch) {
+    const day = parseInt(bbvaMatch[1], 10);
+    const monthStr = bbvaMatch[2].toLowerCase();
+    const months = { ene:0, feb:1, mar:2, abr:3, may:4, jun:5, jul:6, ago:7, sep:8, oct:9, nov:10, dic:11 };
+    const month = months[monthStr] !== undefined ? months[monthStr] : 0;
+    const year = parseInt(bbvaMatch[3], 10);
+    return new Date(year, month, day);
+  }
+  return new Date(0);
 }
 
 export default function ExpenseManager() {
@@ -49,7 +76,6 @@ export default function ExpenseManager() {
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [activeId, setActiveId] = useState(null);
-  const [sortBy, setSortBy] = useState('date');
   
   // UI State
   const [viewMode, setViewMode] = useState('board'); // 'board' | 'analytics'
@@ -57,6 +83,13 @@ export default function ExpenseManager() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isSavingCategory, setIsSavingCategory] = useState(false);
   const [selectedTxForModal, setSelectedTxForModal] = useState(null);
+
+  // Filters State
+  const [sortBy, setSortBy] = useState('date');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterBucket, setFilterBucket] = useState('all');
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -153,41 +186,75 @@ export default function ExpenseManager() {
   };
 
   const handleTitleChange = async (expenseId, newTitle) => {
-    // Update local state optimistically
     setTransactions(prev => prev.map(tx => 
       tx.id === expenseId ? { ...tx, title: newTitle } : tx
     ));
-
     try {
       await updatePersonalExpenseTitle(expenseId, newTitle);
     } catch (err) {
       toast.error('Error al actualizar el título');
-      // On error, we could revert, but for now just reload
       loadData();
     }
   };
 
-  const sortedTransactions = useMemo(() => {
-    return [...transactions].sort((a, b) => {
+  const filteredAndSortedTransactions = useMemo(() => {
+    let filtered = [...transactions];
+
+    // 1. Search Query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(tx => 
+        (tx.concept && tx.concept.toLowerCase().includes(q)) || 
+        (tx.title && tx.title.toLowerCase().includes(q))
+      );
+    }
+
+    // 2. Bucket Filter
+    if (filterBucket !== 'all') {
+      if (filterBucket === 'unclassified') {
+        filtered = filtered.filter(tx => !tx.bucket);
+      } else {
+        filtered = filtered.filter(tx => tx.bucket === filterBucket);
+      }
+    }
+
+    // 3. Date Range
+    if (dateStart || dateEnd) {
+      // Local time bounds for user input
+      const startMs = dateStart ? new Date(dateStart + "T00:00:00").getTime() : 0;
+      const endMs = dateEnd ? new Date(dateEnd + "T23:59:59").getTime() : Infinity;
+      
+      filtered = filtered.filter(tx => {
+        const txTime = parseDateString(tx.date).getTime();
+        return txTime >= startMs && txTime <= endMs;
+      });
+    }
+
+    // 4. Sort
+    return filtered.sort((a, b) => {
       if (sortBy === 'amount') {
         return b.amount - a.amount;
       } else if (sortBy === 'concept') {
-        return a.concept.localeCompare(b.concept);
+        const strA = a.title || a.concept || '';
+        const strB = b.title || b.concept || '';
+        return strA.localeCompare(strB);
       } else {
-        return (a.date || '').localeCompare(b.date || '');
+        const timeA = parseDateString(a.date).getTime();
+        const timeB = parseDateString(b.date).getTime();
+        return timeA - timeB;
       }
     });
-  }, [transactions, sortBy]);
+  }, [transactions, sortBy, searchQuery, filterBucket, dateStart, dateEnd]);
 
-  const unclassified = sortedTransactions.filter(tx => !tx.bucket);
+  const unclassified = filteredAndSortedTransactions.filter(tx => !tx.bucket);
   const activeTx = transactions.find(tx => tx.id === activeId);
 
   return (
     <AppShell breadcrumbs={[{ label: 'Gastos', to: '/expenses' }]}>
       <div className="bg-black text-white p-6 md:p-10 font-sans rounded-xl border border-neutral-800 min-h-screen">
-        <div className="w-full max-w-[1600px] mx-auto space-y-8">
+        <div className="w-full max-w-[1600px] mx-auto space-y-6">
           
-          <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-neutral-800 pb-6">
+          <header className="flex flex-col xl:flex-row xl:items-end justify-between gap-6 border-b border-neutral-800 pb-6">
             <div>
               <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-500">
                 Expense Manager
@@ -195,19 +262,76 @@ export default function ExpenseManager() {
               <p className="text-neutral-400 mt-1">Organiza y visualiza tus estados de cuenta.</p>
             </div>
             
-            <div className="flex bg-neutral-900 rounded-lg p-1 border border-neutral-800 self-start md:self-auto">
-              <button 
-                onClick={() => setViewMode('board')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${viewMode === 'board' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
-              >
-                <LayoutDashboard className="w-4 h-4" /> Clasificación
-              </button>
-              <button 
-                onClick={() => setViewMode('analytics')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${viewMode === 'analytics' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
-              >
-                <BarChart2 className="w-4 h-4" /> Analítica
-              </button>
+            <div className="flex flex-col sm:flex-row gap-4 w-full xl:w-auto">
+              
+              {/* Buscador Global */}
+              <div className="relative flex-1 sm:min-w-[250px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                <input 
+                  type="text" 
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Buscar por concepto o título..."
+                  className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                {searchQuery && (
+                  <button 
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              {/* Filtros */}
+              <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-800 rounded-lg p-1 overflow-x-auto">
+                <select 
+                  value={filterBucket}
+                  onChange={e => setFilterBucket(e.target.value)}
+                  className="bg-transparent text-sm text-neutral-300 focus:outline-none cursor-pointer pl-2 pr-1 border-r border-neutral-800"
+                >
+                  <option value="all" className="bg-neutral-900 text-white">Todas las Categorías</option>
+                  <option value="unclassified" className="bg-neutral-900 text-white">Sin Clasificar</option>
+                  {categories.map(c => (
+                    <option key={c.id} value={c.id} className="bg-neutral-900 text-white">{c.name}</option>
+                  ))}
+                </select>
+                
+                <div className="flex items-center gap-1 px-2 text-sm text-neutral-400 whitespace-nowrap">
+                  <input 
+                    type="date"
+                    value={dateStart}
+                    onChange={e => setDateStart(e.target.value)}
+                    className="bg-transparent focus:outline-none cursor-text w-[110px]"
+                    title="Fecha Inicial"
+                  />
+                  <span>-</span>
+                  <input 
+                    type="date"
+                    value={dateEnd}
+                    onChange={e => setDateEnd(e.target.value)}
+                    className="bg-transparent focus:outline-none cursor-text w-[110px]"
+                    title="Fecha Final"
+                  />
+                </div>
+              </div>
+
+              {/* View Toggle */}
+              <div className="flex bg-neutral-900 rounded-lg p-1 border border-neutral-800 shrink-0">
+                <button 
+                  onClick={() => setViewMode('board')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${viewMode === 'board' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
+                >
+                  <LayoutDashboard className="w-4 h-4" /> Tablero
+                </button>
+                <button 
+                  onClick={() => setViewMode('analytics')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${viewMode === 'analytics' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
+                >
+                  <BarChart2 className="w-4 h-4" /> Analítica
+                </button>
+              </div>
             </div>
           </header>
 
@@ -221,7 +345,7 @@ export default function ExpenseManager() {
               <PdfUploader onTransactionsExtracted={handleTransactionsExtracted} />
             </div>
           ) : viewMode === 'analytics' ? (
-            <ExpenseCharts transactions={transactions} categories={categories} />
+            <ExpenseCharts transactions={filteredAndSortedTransactions} categories={categories} />
           ) : (
             <DndContext 
               collisionDetection={closestCorners} 
@@ -296,7 +420,14 @@ export default function ExpenseManager() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {categories.map(cat => {
-                      const catTxs = sortedTransactions.filter(tx => tx.bucket === cat.id);
+                      // Solo procesamos las transacciones filtradas para esta categoría.
+                      // Ojo, si el filtro global no es 'all' o la categoría actual, 
+                      // la categoría podría quedar vacía.
+                      const catTxs = filteredAndSortedTransactions.filter(tx => tx.bucket === cat.id);
+                      
+                      // Si hay un filtro global de bucket y no es éste, ocultamos la categoría entera.
+                      if (filterBucket !== 'all' && filterBucket !== cat.id) return null;
+
                       return (
                         <CategoryBucket key={cat.id} category={cat} transactions={catTxs}>
                           {catTxs.map(tx => (
