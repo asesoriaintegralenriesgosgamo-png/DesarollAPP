@@ -16,12 +16,14 @@ import {
   insertPersonalExpenses, 
   createPersonalCategory, 
   updatePersonalExpenseCategory,
+  updatePersonalCategory,
   updatePersonalExpenseTitle,
   deletePersonalExpense,
   listDeletedPersonalExpenses,
   restorePersonalExpense,
   hardDeletePersonalExpense
 } from '../lib/api/personalExpenses';
+import CategoryEditModal from '../components/expenses/CategoryEditModal';
 
 function UnclassifiedList({ transactions, children }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -88,6 +90,10 @@ export default function ExpenseManager() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isSavingCategory, setIsSavingCategory] = useState(false);
   const [selectedTxForModal, setSelectedTxForModal] = useState(null);
+  
+  // Category Edit State
+  const [categoryBeingEdited, setCategoryBeingEdited] = useState(null);
+  const [isEditingCategory, setIsEditingCategory] = useState(false);
   
   // Manual Transaction State
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
@@ -220,6 +226,20 @@ export default function ExpenseManager() {
       toast.error(err.message || 'Error al crear categoría');
     } finally {
       setIsSavingCategory(false);
+    }
+  };
+
+  const submitEditCategory = async (updates) => {
+    setIsEditingCategory(true);
+    try {
+      const updatedCat = await updatePersonalCategory(categoryBeingEdited.id, updates);
+      setCategories(prev => prev.map(c => c.id === updatedCat.id ? updatedCat : c));
+      setCategoryBeingEdited(null);
+      toast.success('Categoría actualizada');
+    } catch (err) {
+      toast.error(err.message || 'Error al actualizar categoría');
+    } finally {
+      setIsEditingCategory(false);
     }
   };
 
@@ -620,7 +640,12 @@ export default function ExpenseManager() {
                       if (filterBucket !== 'all' && filterBucket !== cat.id) return null;
 
                       return (
-                        <CategoryBucket key={cat.id} category={cat} transactions={catTxs}>
+                        <CategoryBucket 
+                          key={cat.id} 
+                          category={cat} 
+                          transactions={catTxs}
+                          onEditCategory={setCategoryBeingEdited}
+                        >
                           {catTxs.map(tx => (
                             <ExpenseCard key={tx.id} transaction={tx} onTitleChange={handleTitleChange} onRightClick={setSelectedTxForModal} />
                           ))}

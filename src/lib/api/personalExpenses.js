@@ -1,6 +1,6 @@
 import { supabase } from "../supabase";
 
-const CAT_COLUMNS = "id, user_id, name, created_at";
+const CAT_COLUMNS = "id, user_id, name, color, icon, created_at";
 const EXP_COLUMNS = "id, user_id, category_id, date, concept, title, amount, type, original_line, created_at, deleted_at";
 
 export async function listPersonalCategories() {
@@ -16,6 +16,17 @@ export async function createPersonalCategory({ name, userId }) {
   const { data, error } = await supabase
     .from("personal_expense_categories")
     .insert({ name, user_id: userId })
+    .select(CAT_COLUMNS)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updatePersonalCategory(categoryId, updates) {
+  const { data, error } = await supabase
+    .from("personal_expense_categories")
+    .update(updates)
+    .eq("id", categoryId)
     .select(CAT_COLUMNS)
     .single();
   if (error) throw error;
@@ -96,4 +107,32 @@ export async function listDeletedPersonalExpenses() {
     .order("deleted_at", { ascending: false });
   if (error) throw error;
   return data;
+}
+
+// --- Periods API ---
+export async function listPersonalExpensePeriods() {
+  const { data, error } = await supabase
+    .from("personal_expense_periods")
+    .select("*")
+    .order("start_date", { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+export async function createPersonalExpensePeriod(period) {
+  const { data, error } = await supabase
+    .from("personal_expense_periods")
+    .insert(period)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deletePersonalExpensePeriod(periodId) {
+  const { error } = await supabase
+    .from("personal_expense_periods")
+    .delete()
+    .eq("id", periodId);
+  if (error) throw error;
 }

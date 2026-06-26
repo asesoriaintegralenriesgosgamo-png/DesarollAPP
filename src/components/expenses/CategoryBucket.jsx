@@ -1,7 +1,9 @@
 import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
+import { renderCategoryIcon } from './CategoryIcons';
+import { Edit2 } from 'lucide-react';
 
-export default function CategoryBucket({ category, transactions, children }) {
+export default function CategoryBucket({ category, transactions, onEditCategory, children }) {
   const { setNodeRef, isOver } = useDroppable({
     id: category.id,
   });
@@ -12,15 +14,40 @@ export default function CategoryBucket({ category, transactions, children }) {
     <div
       ref={setNodeRef}
       className={`bg-neutral-900 border rounded-xl flex flex-col overflow-hidden transition-colors ${
-        isOver ? 'border-blue-500 bg-blue-500/10' : 'border-neutral-800'
+        isOver ? 'bg-neutral-800' : ''
       }`}
-      style={{ minHeight: '300px' }}
+      style={{ 
+        minHeight: '300px', 
+        borderColor: isOver ? (category.color || '#3b82f6') : '#262626'
+      }}
     >
-      <div className="p-4 border-b border-neutral-800 flex justify-between items-center bg-neutral-900/50">
-        <h3 className="font-semibold text-white truncate" title={category.name}>{category.name}</h3>
-        <span className="font-bold text-blue-400 shrink-0 ml-2">
-          ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-        </span>
+      <div 
+        className="p-4 border-b flex justify-between items-center"
+        style={{ 
+          borderColor: category.color ? `${category.color}40` : '#262626',
+          backgroundColor: category.color ? `${category.color}10` : 'transparent'
+        }}
+      >
+        <div className="flex items-center gap-2 overflow-hidden">
+          {category.icon && (
+            <div className="shrink-0">
+              {renderCategoryIcon(category.icon, category.color)}
+            </div>
+          )}
+          <h3 className="font-semibold text-white truncate" title={category.name}>{category.name}</h3>
+        </div>
+        <div className="flex items-center gap-3 shrink-0 ml-2">
+          <span className="font-bold text-neutral-300">
+            ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          </span>
+          <button 
+            onClick={() => onEditCategory(category)}
+            className="text-neutral-500 hover:text-white transition-colors"
+            title="Editar Categoría"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
       <div className="p-3 flex-1 overflow-y-auto flex flex-col gap-2">
         {children}
