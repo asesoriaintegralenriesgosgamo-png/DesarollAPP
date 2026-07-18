@@ -313,7 +313,7 @@ export default function ScenarioEditor() {
       </div>
 
       {/* Top KPI strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mb-6">
         <KPICard
           label="Precio de venta"
           value={fmtMXN(v.precio_venta)}
@@ -359,7 +359,7 @@ export default function ScenarioEditor() {
         {/* LEFT: Inputs */}
         <div className="lg:col-span-5 space-y-4">
           <SectionCard title={SECTIONS.terreno.label} icon={SECTIONS.terreno.icon}>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
               <NumberField label="Costo del terreno" value={v.terreno_costo} onChange={set("terreno_costo")} prefix="$" readonly={readonly} />
               <NumberField label="Superficie terreno" value={v.terreno_m2} onChange={set("terreno_m2")} suffix="m²" readonly={readonly} />
               <NumberField label="ISAI / derechos / impuestos" value={v.terreno_isai} onChange={set("terreno_isai")} prefix="$" hint="Derechos + ISAI + retenciones" readonly={readonly} />
@@ -371,7 +371,7 @@ export default function ScenarioEditor() {
           </SectionCard>
 
           <SectionCard title={SECTIONS.construccion.label} icon={SECTIONS.construccion.icon}>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
               <NumberField label="m² de construcción" value={v.construccion_m2} onChange={set("construccion_m2")} suffix="m²" readonly={readonly} />
               <NumberField label="Costo por m²" value={v.construccion_costo_m2} onChange={set("construccion_costo_m2")} prefix="$" hint="QRO residencial: $12,500-$16,000" readonly={readonly} />
               <NumberField label="Imprevistos" value={v.imprevistos_pct} onChange={set("imprevistos_pct")} suffix="%" step={0.5} hint="Recomendado 5-10%" readonly={readonly} />
@@ -384,7 +384,7 @@ export default function ScenarioEditor() {
           </SectionCard>
 
           <SectionCard title={SECTIONS.servicios.label} icon={SECTIONS.servicios.icon}>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
               <NumberField label="Contrato CFE" value={v.cfe} onChange={set("cfe")} prefix="$" readonly={readonly} />
               <NumberField label="Contrato agua" value={v.agua} onChange={set("agua")} prefix="$" readonly={readonly} />
               <NumberField label="Predial durante construcción" value={v.predial_construccion} onChange={set("predial_construccion")} prefix="$" hint="Bimestral × duración" readonly={readonly} />
@@ -394,7 +394,7 @@ export default function ScenarioEditor() {
           </SectionCard>
 
           <SectionCard title={SECTIONS.tiempo.label} icon={SECTIONS.tiempo.icon}>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
               <NumberField label="Meses de construcción" value={v.meses_construccion} onChange={set("meses_construccion")} suffix="meses" readonly={readonly} />
               <NumberField label="Meses estimados de venta" value={v.meses_venta} onChange={set("meses_venta")} suffix="meses" readonly={readonly} />
               <NumberField label="Costo de oportunidad anual" value={v.costo_oportunidad_pct} onChange={set("costo_oportunidad_pct")} suffix="%" step={0.5} hint="CETES, otra inversión pasiva" readonly={readonly} />
@@ -407,7 +407,7 @@ export default function ScenarioEditor() {
           </SectionCard>
 
           <SectionCard title={SECTIONS.venta.label} icon={SECTIONS.venta.icon}>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
               <NumberField label="Precio de venta esperado" value={v.precio_venta} onChange={set("precio_venta")} prefix="$" readonly={readonly} />
               <div className="bg-stone-50 rounded-md p-2 flex flex-col justify-center">
                 <span className="text-[10px] text-stone-500 uppercase tracking-wider">Precio por m²</span>
@@ -422,7 +422,7 @@ export default function ScenarioEditor() {
           <SectionCard title={SECTIONS.impuestos.label} icon={SECTIONS.impuestos.icon}>
             <ToggleField label="Aplicar ISR sobre la utilidad" value={v.isr_aplica} onChange={set("isr_aplica")} hint="Activa si NO aplica exención de casa habitación" readonly={readonly} />
             {v.isr_aplica && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
                 <NumberField label="Tasa ISR estimada" value={v.isr_pct} onChange={set("isr_pct")} suffix="%" step={1} hint="PM: 30% · PF: hasta 35%" readonly={readonly} />
                 <div className="bg-rose-50 rounded-md p-2 flex flex-col justify-center">
                   <span className="text-[10px] text-rose-600 uppercase tracking-wider">ISR estimado</span>
@@ -476,7 +476,7 @@ export default function ScenarioEditor() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
             <KPICard label="Costo m² construcción" value={fmtMXN(calc.costo_m2_construccion_solo)} sublabel="Solo obra + imprevistos" />
             <KPICard label="Costo m² terreno" value={fmtMXN(calc.costo_m2_terreno)} sublabel={`${fmtNum(v.terreno_m2)} m² totales`} />
             <KPICard label="Precio m² venta" value={fmtMXN(calc.precio_venta_m2)} sublabel={`${fmtNum(v.construccion_m2)} m² const.`} />
@@ -645,7 +645,7 @@ function NumberField({ label, value, onChange, prefix = "", suffix = "", hint = 
 
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-stone-600 tracking-tight">{label}</label>
+      <label className="text-xs font-medium text-stone-600 tracking-tight leading-tight break-words">{label}</label>
       <div className="relative">
         {prefix && (
           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 text-sm pointer-events-none">
@@ -682,16 +682,16 @@ function NumberField({ label, value, onChange, prefix = "", suffix = "", hint = 
 
 function ToggleField({ label, value, onChange, hint = "", readonly = false }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-1">
+    <div className="flex items-start sm:items-center justify-between gap-3 py-1">
       <div className="flex flex-col">
-        <span className="text-xs font-medium text-stone-600">{label}</span>
-        {hint && <span className="text-[10px] text-stone-400">{hint}</span>}
+        <span className="text-xs font-medium text-stone-600 leading-tight break-words">{label}</span>
+        {hint && <span className="text-[10px] text-stone-400 leading-tight mt-0.5">{hint}</span>}
       </div>
       <button
         type="button"
         onClick={() => !readonly && onChange(!value)}
         disabled={readonly}
-        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${value ? "bg-stone-900" : "bg-stone-300"}`}
+        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${value ? "bg-stone-900" : "bg-stone-300"}`}
       >
         <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${value ? "translate-x-5" : "translate-x-1"}`} />
       </button>
@@ -722,8 +722,8 @@ function KPICard({ label, value, sublabel, accent = "stone", size = "md", toolti
   const sizeMap = { md: "text-xl", lg: "text-2xl" };
   return (
     <div className="group relative bg-white border border-stone-200 rounded-lg p-4 hover:border-stone-300 transition-colors">
-      <div className="flex items-center gap-1.5 mb-1">
-        <div className="text-[10px] uppercase tracking-wider text-stone-500 font-medium">{label}</div>
+      <div className="flex items-start gap-1.5 mb-1">
+        <div className="text-[10px] uppercase tracking-wider text-stone-500 font-medium leading-tight break-words">{label}</div>
         {tooltip && <Info className="w-3 h-3 text-stone-400 cursor-help" />}
       </div>
       <div className={`${sizeMap[size]} font-semibold ${accents[accent]} tracking-tight`}>{value}</div>
@@ -742,12 +742,12 @@ function FlowRow({ label, value, indent = false, bold = false, separator = false
   const accents = { stone: "text-stone-900", emerald: "text-emerald-700", rose: "text-rose-700" };
   const sizeMap = { md: "text-sm", lg: "text-base" };
   return (
-    <div className={`flex items-center justify-between ${separator ? "border-t border-stone-200 pt-2 mt-1" : ""} ${indent ? "pl-4" : ""}`}>
-      <span className={`${bold ? "font-semibold" : "font-normal"} ${sizeMap[size]} text-stone-700`}>
+    <div className={`flex items-start justify-between gap-2 ${separator ? "border-t border-stone-200 pt-2 mt-1" : ""} ${indent ? "pl-4" : ""}`}>
+      <span className={`${bold ? "font-semibold" : "font-normal"} ${sizeMap[size]} text-stone-700 leading-tight break-words`}>
         {label}
-        {hint && <span className="text-[10px] text-stone-400 ml-1">({hint})</span>}
+        {hint && <span className="text-[10px] text-stone-400 ml-1 block sm:inline">({hint})</span>}
       </span>
-      <span className={`${bold ? "font-semibold" : "font-normal"} ${sizeMap[size]} tabular-nums ${value < 0 ? "text-rose-600" : accents[accent]}`}>
+      <span className={`${bold ? "font-semibold" : "font-normal"} ${sizeMap[size]} tabular-nums shrink-0 text-right ${value < 0 ? "text-rose-600" : accents[accent]}`}>
         {fmtMXN(value)}
       </span>
     </div>
