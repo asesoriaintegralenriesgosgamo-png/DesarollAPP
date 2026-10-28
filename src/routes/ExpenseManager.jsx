@@ -1133,15 +1133,15 @@ export default function ExpenseManager() {
 
                             <div className="grid grid-cols-2 gap-2 my-3 p-2.5 rounded-xl bg-neutral-950 border border-neutral-800/80 text-xs">
                               <div>
-                                <span className="text-neutral-500 block text-[10px] uppercase">Cargos ({stmt.cargosCount})</span>
+                                <span className="text-neutral-500 block text-[10px] uppercase">Cargos ({stmt.countCargos ?? stmt.cargosCount ?? 0})</span>
                                 <span className="text-rose-400 font-mono font-bold">
-                                  {formatMoney(stmt.cargosTotal)}
+                                  {formatMoney(stmt.totalCargos ?? stmt.cargosTotal ?? 0)}
                                 </span>
                               </div>
                               <div>
-                                <span className="text-neutral-500 block text-[10px] uppercase">Abonos ({stmt.abonosCount})</span>
+                                <span className="text-neutral-500 block text-[10px] uppercase">Abonos ({stmt.countAbonos ?? stmt.abonosCount ?? 0})</span>
                                 <span className="text-emerald-400 font-mono font-bold">
-                                  {formatMoney(stmt.abonosTotal)}
+                                  {formatMoney(stmt.totalAbonos ?? stmt.abonosTotal ?? 0)}
                                 </span>
                               </div>
                             </div>
@@ -1606,17 +1606,20 @@ export default function ExpenseManager() {
           )}
 
           {/* Visor PDF Interactivo con Puntero al Cargo */}
-          <StatementPdfModal
-            isOpen={pdfModalState.isOpen}
-            onClose={() => setPdfModalState({ isOpen: false, transaction: null, statementFile: null })}
-            initialTransaction={pdfModalState.transaction}
-            initialStatementFile={pdfModalState.statementFile}
-            allTransactions={transactions}
-            statements={statements}
-            categories={categories}
-            onTitleChange={handleTitleChange}
-            onCategoryChange={handleCategoryChange}
-          />
+          {pdfModalState.isOpen && (
+            <StatementPdfModal
+              key={`${pdfModalState.statementFile || ''}-${pdfModalState.transaction?.id || 'stmt'}`}
+              isOpen={true}
+              onClose={() => setPdfModalState({ isOpen: false, transaction: null, statementFile: null })}
+              initialTransaction={pdfModalState.transaction}
+              initialStatementFile={pdfModalState.statementFile}
+              allTransactions={transactions}
+              statements={statements}
+              categories={categories}
+              onTitleChange={handleTitleChange}
+              onCategoryChange={handleCategoryChange}
+            />
+          )}
 
         </div>
       </div>

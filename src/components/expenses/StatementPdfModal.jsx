@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import {
   X,
@@ -13,10 +13,16 @@ import {
   Search,
   Edit2,
   Check,
-  Sparkles,
   Crosshair
 } from 'lucide-react';
 import { getStatementPdfData } from '../../lib/statementStore';
+
+if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+    'pdfjs-dist/build/pdf.worker.mjs',
+    import.meta.url
+  ).toString();
+}
 
 export default function StatementPdfModal({
   isOpen,
@@ -29,13 +35,14 @@ export default function StatementPdfModal({
   onTitleChange,
   onCategoryChange
 }) {
+  const initialPage = initialTransaction?.page || (initialStatementFile ? 2 : 1);
   const [activeFile, setActiveFile] = useState(
     initialTransaction?.statementFile || initialStatementFile || ''
   );
   const [selectedTxId, setSelectedTxId] = useState(initialTransaction?.id || null);
   const [pdfDoc, setPdfDoc] = useState(null);
   const [numPages, setNumPages] = useState(1);
-  const [currentPage, setCurrentPage] = useState(initialTransaction?.page || 1);
+  const [currentPage, setCurrentPage] = useState(initialPage);
   const [scale, setScale] = useState(1.35);
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [pdfError, setPdfError] = useState(null);
@@ -51,22 +58,7 @@ export default function StatementPdfModal({
   const highlightRef = useRef(null);
   const pdfScrollContainerRef = useRef(null);
   const renderTaskRef = useRef(null);
-
-  useEffect(() => {
-    if (initialTransaction) {
-      if (initialTransaction.statementFile) {
-        setActiveFile(initialTransaction.statementFile);
-      }
-      setSelectedTxId(initialTransaction.id);
-      if (initialTransaction.page) {
-        setCurrentPage(initialTransaction.page);
-      }
-    } else if (initialStatementFile) {
-      setActiveFile(initialStatementFile);
-      setSelectedTxId(null);
-      setCurrentPage(2); // Most statements start movements on page 2
-    }
-  }, [initialTransaction, initialStatementFile]);
+  const desiredPageRef = useRef(initialPage);
 
   const activeStatement = useMemo(() => {
     return statements.find(s => s.fileName === activeFile) || null;
@@ -109,6 +101,7 @@ export default function StatementPdfModal({
   useEffect(() => {
     if (!isOpen || !activeFile) return;
     let cancelled = false;
+    let loadedDoc = null;
 
     async function loadPdf() {
       setLoadingPdf(true);
@@ -119,18 +112,42 @@ export default function StatementPdfModal({
           throw new Error('No se encontró el archivo PDF del estado de cuenta.');
         }
 
-        const loadingTask = source.type === 'buffer'
-          ? pdfjsLib.getDocument({ data: new Uint8Array(source.data.slice(0)) })
-          : pdfjsLib.getDocument(source.url);
+        let pdfBytes;
+        if (source.type === 'buffer') {
+          pdfBytes = new Uint8Array(source.data.slice(0));
+        } else {
+          const response = await fetch(source.url);
+          if (!response.ok) {
+            throw new Error(`No se pudo descargar el PDF (${response.status} ${response.statusText}).`);
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          pdfBytes = new Uint8Array(arrayBuffer);
+          // Validate %PDF magic header (0x25 0x50 0x44 0x46)
+          if (
+            pdfBytes.length < 5 ||
+            pdfBytes[0] !== 0x25 ||
+            pdfBytes[1] !== 0x50 ||
+            pdfBytes[2] !== 0x44 ||
+            pdfBytes[3] !== 0x46
+          ) {
+            throw new Error('El archivo recibido no es un documento PDF válido.');
+          }
+        }
 
+        const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
         const doc = await loadingTask.promise;
-        if (cancelled) return;
+        if (cancelled) {
+          doc.destroy().catch(() => {});
+          return;
+        }
+        loadedDoc = doc;
         setPdfDoc(doc);
         setNumPages(doc.numPages);
 
-        const targetPage = (selectedTx && selectedTx.statementFile === activeFile && selectedTx.page)
-          ? Math.min(selectedTx.page, doc.numPages)
-          : Math.min(currentPage || 2, doc.numPages);
+        const targetPage = Math.min(
+          Math.max(1, desiredPageRef.current || 1),
+          doc.numPages
+        );
         setCurrentPage(targetPage);
       } catch (err) {
         if (!cancelled) {
@@ -147,25 +164,33 @@ export default function StatementPdfModal({
     loadPdf();
     return () => {
       cancelled = true;
+      if (loadedDoc) {
+        loadedDoc.destroy().catch(() => {});
+      }
     };
   }, [isOpen, activeFile]);
 
   // Render current page onto canvas
   useEffect(() => {
-    if (!pdfDoc || !canvasRef.current || !isOpen) return;
+    if (!pdfDoc || loadingPdf || !canvasRef.current || !isOpen) return;
     let cancelled = false;
 
     async function renderPage() {
       try {
         if (renderTaskRef.current) {
+          const prevTask = renderTaskRef.current;
+          renderTaskRef.current = null;
           try {
-            renderTaskRef.current.cancel();
+            prevTask.cancel();
+            await prevTask.promise.catch(() => {});
           } catch {
             // ignore
           }
         }
 
-        const page = await pdfDoc.getPage(currentPage);
+        if (cancelled) return;
+        const safePageNum = Math.min(Math.max(1, currentPage || 1), pdfDoc.numPages);
+        const page = await pdfDoc.getPage(safePageNum);
         if (cancelled) return;
 
         const baseViewport = page.getViewport({ scale: 1.0 });
@@ -182,11 +207,11 @@ export default function StatementPdfModal({
         canvas.style.height = `${Math.floor(viewport.height)}px`;
 
         const ctx = canvas.getContext('2d');
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
         const renderTask = page.render({
           canvasContext: ctx,
-          viewport
+          viewport,
+          transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null
         });
         renderTaskRef.current = renderTask;
         await renderTask.promise;
@@ -211,10 +236,27 @@ export default function StatementPdfModal({
     return () => {
       cancelled = true;
     };
-  }, [pdfDoc, currentPage, scale, isOpen, selectedTxId]);
+  }, [pdfDoc, currentPage, scale, isOpen, loadingPdf]);
+
+  // Scroll whenever selectedTxId changes on the currently rendered page
+  useEffect(() => {
+    if (!isOpen || loadingPdf || !selectedTxId) return;
+    const timer = setTimeout(() => {
+      if (highlightRef.current) {
+        highlightRef.current.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+      }
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [selectedTxId, currentPage, loadingPdf, isOpen]);
 
   const handleSelectTransaction = (tx) => {
     setSelectedTxId(tx.id);
+    if (tx.page) {
+      desiredPageRef.current = tx.page;
+    }
     if (tx.statementFile && tx.statementFile !== activeFile) {
       setActiveFile(tx.statementFile);
     }
@@ -258,6 +300,7 @@ export default function StatementPdfModal({
             <select
               value={activeFile}
               onChange={(e) => {
+                desiredPageRef.current = 2;
                 setActiveFile(e.target.value);
                 setSelectedTxId(null);
                 setCurrentPage(2);
