@@ -88,6 +88,17 @@ export async function updatePersonalExpenseTitle(expenseId, title) {
   return data;
 }
 
+export async function updatePersonalExpenseFields(expenseId, updates) {
+  const { data, error } = await supabase
+    .from("personal_expenses")
+    .update(updates)
+    .eq("id", expenseId)
+    .select(EXP_COLUMNS)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function deletePersonalExpense(expenseId) {
   const { error } = await supabase
     .from("personal_expenses")
