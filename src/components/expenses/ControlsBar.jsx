@@ -1,34 +1,33 @@
-import React from 'react';
-import { ArrowUpDown, Clock, Layers } from 'lucide-react';
+import { ArrowUpDown, Clock, AlignLeft } from 'lucide-react';
 
 export default function ControlsBar({ sortBy, setSortBy }) {
+  const options = [
+    { id: 'date', label: 'Fecha', icon: Clock },
+    { id: 'amount', label: 'Monto', icon: ArrowUpDown },
+    { id: 'concept', label: 'Nombre', icon: AlignLeft }
+  ];
+
   return (
-    <div className="flex items-center gap-2 mb-4 bg-neutral-900 p-2 rounded-lg border border-neutral-800 overflow-x-auto">
-      <span className="text-sm text-neutral-400 ml-2 mr-2 whitespace-nowrap">Ordenar por:</span>
-      <button
-        onClick={() => setSortBy('date')}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-          sortBy === 'date' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
-        }`}
-      >
-        <Clock className="w-4 h-4" /> Fecha
-      </button>
-      <button
-        onClick={() => setSortBy('amount')}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-          sortBy === 'amount' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
-        }`}
-      >
-        <ArrowUpDown className="w-4 h-4" /> Monto
-      </button>
-      <button
-        onClick={() => setSortBy('concept')}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-          sortBy === 'concept' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
-        }`}
-      >
-        <Layers className="w-4 h-4" /> Concepto
-      </button>
+    <div className="grid grid-cols-3 gap-1 bg-neutral-950 p-1 rounded-xl border border-neutral-800">
+      {options.map(opt => {
+        const Icon = opt.icon;
+        const active = sortBy === opt.id;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => setSortBy(opt.id)}
+            className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-colors ${
+              active
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-neutral-400 hover:text-white hover:bg-neutral-800/80'
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">{opt.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

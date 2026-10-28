@@ -147,7 +147,7 @@ export function stripMetaFromOriginalLine(originalLine) {
   return idx !== -1 ? originalLine.slice(0, idx) : originalLine;
 }
 
-export function parseFallbackIsoDate(dateStr, rawLine = '') {
+export function parseFallbackIsoDate(dateStr) {
   if (!dateStr) return '2026-01-01';
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
 
@@ -163,7 +163,7 @@ export function parseFallbackIsoDate(dateStr, rawLine = '') {
   if (bbvaDeb) {
     const monAbbr = bbvaDeb[2].toLowerCase();
     const m = MONTHS_MAP[monAbbr] || '01';
-    const yr = monAbbr === 'dic' ? '2025' : '2026';
+    const yr = ['oct', 'nov', 'dic'].includes(monAbbr) ? '2025' : '2026';
     return `${yr}-${m}-${String(bbvaDeb[1]).padStart(2, '0')}`;
   }
 
@@ -172,14 +172,27 @@ export function parseFallbackIsoDate(dateStr, rawLine = '') {
   if (amex) {
     const monName = amex[2].toLowerCase();
     const m = MONTHS_MAP[monName] || '01';
-    const yr = monName.startsWith('dic') ? '2025' : '2026';
+    const yr = (monName.startsWith('oct') || monName.startsWith('nov') || monName.startsWith('dic')) ? '2025' : '2026';
     return `${yr}-${m}-${String(amex[1]).padStart(2, '0')}`;
   }
 
   return '2026-01-01';
 }
 
-export function inferBankAndMethodFromLegacy(dateStr, rawLine = '', concept = '') {
+const SHORT_MONTHS_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+export function formatFriendlyDate(isoDate, rawDate = '') {
+  if (isoDate && /^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+    const [yr, mo, dy] = isoDate.split('-');
+    const mIdx = parseInt(mo, 10) - 1;
+    if (mIdx >= 0 && mIdx < 12) {
+      return `${dy} ${SHORT_MONTHS_ES[mIdx]} ${yr}`;
+    }
+  }
+  return rawDate || '';
+}
+
+export function inferBankAndMethodFromLegacy(dateStr) {
   if (/^\d{1,2}\s+de\s+[A-Za-z]+/i.test(dateStr || '')) {
     return {
       bank: 'AMEX',
@@ -275,7 +288,8 @@ export function unpackExpenseRow(dbRow, catalogTxs = catalogData.transactions) {
   const paymentMethod = meta?.paymentMethod || fallbackInfo.paymentMethod;
   const accountName = meta?.accountName || fallbackInfo.accountName;
   const isoDate = meta?.isoDate || parseFallbackIsoDate(dbRow.date, rawOriginalLine);
-  const subType = meta?.subType || classifySubType(dbRow.concept, dbRow.type, bank, paymentMethod);
+  const inferredSubType = classifySubType(dbRow.concept, dbRow.type, bank, paymentMethod);
+  const subType = inferredSubType === 'inversion' ? 'inversion' : (meta?.subType || inferredSubType);
 
   return {
     ...dbRow,

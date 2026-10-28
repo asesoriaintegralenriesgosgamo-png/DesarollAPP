@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   PieChart,
   Pie,
@@ -104,13 +104,13 @@ export default function ExpenseCharts({
         }
       } else if (tx.bank === 'BBVA' && tx.paymentMethod === 'debito') {
         if (tx.type === 'cargo') {
-          if (tx.subType === 'pago_tdc') {
-            summary.bbvaDebitoPagosTdc += amt;
+          if (tx.subType === 'pago_tdc' || tx.subType === 'inversion') {
+            if (tx.subType === 'pago_tdc') summary.bbvaDebitoPagosTdc += amt;
           } else {
             summary.bbvaDebitoGastosReales += amt;
             summary.bbvaDebitoGastosCount++;
           }
-        } else if (tx.type === 'abono') {
+        } else if (tx.type === 'abono' && tx.subType !== 'inversion') {
           summary.bbvaDebitoIngresos += amt;
         }
       }
@@ -125,7 +125,7 @@ export default function ExpenseCharts({
   const scopedTransactions = useMemo(() => {
     return transactions.filter(tx => {
       if (analysisMode === 'gastos_reales') {
-        return tx.type === 'cargo' && tx.subType !== 'pago_tdc';
+        return tx.type === 'cargo' && tx.subType !== 'pago_tdc' && tx.subType !== 'inversion' && tx.subType !== 'msi_ajuste';
       }
       if (analysisMode === 'todos_cargos') {
         return tx.type === 'cargo';

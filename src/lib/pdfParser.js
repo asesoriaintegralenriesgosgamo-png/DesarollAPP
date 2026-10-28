@@ -30,6 +30,13 @@ function resolveYearForMonth(monthNum, startMonth, startYear, endMonth, endYear)
 export function classifySubType(concept, type, bank, paymentMethod) {
   const upper = (concept || '').toUpperCase();
   if (
+    upper.includes('APERTURA DE INVERSION') ||
+    upper.includes('DEPOSITO DE INVERSION') ||
+    upper.includes('LIQUIDACION DE INVERSION')
+  ) {
+    return 'inversion';
+  }
+  if (
     upper.includes('MONTO A DIFERIR MESES EN AUTOM') ||
     upper.includes('MESES EN AUTOMÁTICO') ||
     upper.includes('MESES EN AUTOMATICO')
@@ -369,7 +376,7 @@ export async function parsePdfStatementFile(file) {
             inlineCR = Boolean(m2[4]);
           }
         } else if (!m2) {
-          const orphanMatch = l.text.match(/^([A-Z0-9*.\s\-\/]+?)\s+(\d{1,3}(?:,\d{3})*(?:\.\d{2}))$/);
+          const orphanMatch = l.text.match(/^([A-Z0-9*.\s\-/]+?)\s+(\d{1,3}(?:,\d{3})*(?:\.\d{2}))$/);
           if (orphanMatch && !l.text.includes('Total ') && !l.text.includes('CARGO ')) {
             for (let j = i + 1; j < Math.min(i + 15, lines.length); j++) {
               if (lines[j].page === l.page + 1) {
